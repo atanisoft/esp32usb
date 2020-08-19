@@ -9,9 +9,9 @@ target_compile_options(${COMPONENT_TARGET} INTERFACE
 target_include_directories(${COMPONENT_TARGET} INTERFACE
     "${FREERTOS_ORIG_INCLUDE_PATH}"
     "${COMPONENT_DIR}/include/"
-    "${COMPONENT_DIR}/tinyusb/hw/bsp/"
-    "${COMPONENT_DIR}/tinyusb/src/"
-    "${COMPONENT_DIR}/tinyusb/src/device"
+    "${COMPONENT_DIR}/src/tinyusb/hw/bsp/"
+    "${COMPONENT_DIR}/src/tinyusb/src/"
+    "${COMPONENT_DIR}/src/tinyusb/src/device"
 )
 
 target_sources(${COMPONENT_TARGET} INTERFACE
