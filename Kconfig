@@ -1,4 +1,4 @@
-menu "TinyUSB"
+menu "TinyUSB (esp32s2usb)"
     config TINYUSB_ENABLED
         bool "Enable TinyUSB driver"
         default n
