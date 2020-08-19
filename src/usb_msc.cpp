@@ -217,7 +217,7 @@ void register_virtual_file(const std::string name, const char *content,
     else
     {
         std::string base_name = name.substr(0, pos);
-        std::string extension = name.substr(pos, 3);
+        std::string extension = name.substr(pos + 1, 3);
         // truncate the base name to a max of eight characters
         if (base_name.length() > 8)
         {
