@@ -74,11 +74,8 @@ void init_usb_subsystem(bool external_phy)
 static void usb_device_task(void *param)
 {
     ESP_LOGI(TAG, "Starting TinyUSB stack");
-    if (!tusb_init())
-    {
-        ESP_LOGE(TAG, "TinyUSB init failed!");
-        abort();
-    }
+
+    ESP_ERROR_CHECK(tusb_init());
 
     while (1)
     {
