@@ -17,6 +17,7 @@
 #include <driver/periph_ctrl.h>
 #include <esp_log.h>
 #include <esp_rom_gpio.h>
+#include <esp_task.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <hal/usb_hal.h>
@@ -70,7 +71,7 @@ void init_usb_subsystem(bool external_phy)
     ESP_LOGV(TAG, "USB system initialized");
 }
 
-static void* usb_device_task(void *param)
+static void usb_device_task(void *param)
 {
     ESP_LOGI(TAG, "Starting TinyUSB stack");
     if (!tusb_init())
@@ -84,7 +85,6 @@ static void* usb_device_task(void *param)
         tud_task();
         vTaskDelay(pdMS_TO_TICKS(5));
     }
-    return nullptr;
 }
 
 static constexpr uint32_t USB_TASK_STACK_SIZE = 4096L;

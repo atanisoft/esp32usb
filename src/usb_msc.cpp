@@ -207,7 +207,7 @@ void register_virtual_file(const std::string name, const char *content,
 
     // break the provided filename into base name and extension
     size_t pos = name.find_first_of('.');
-    if (pos == string::npos)
+    if (pos == std::string::npos)
     {
         // copy the filename as-is into the base name and extension fields with
         // space padding as needed. NOTE: this will overflow the name field.
@@ -216,8 +216,8 @@ void register_virtual_file(const std::string name, const char *content,
     }
     else
     {
-        string base_name = name.substr(0, pos);
-        string extension = name.substr(pos, 3);
+        std::string base_name = name.substr(0, pos);
+        std::string extension = name.substr(pos, 3);
         // truncate the base name to a max of eight characters
         if (base_name.length() > 8)
         {
@@ -459,16 +459,16 @@ int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
         // attempt.
         for(size_t index = 0; index < s_root_entry_count; index++)
         {
-            if (sector_idx >= s_root_directory[index].start_sector &&
-                sector_idx <= s_root_directory[index].end_sector)
+            if (lba >= s_root_directory[index].start_sector &&
+                lba <= s_root_directory[index].end_sector)
             {
                 if (s_root_directory[index].flags & FAT_DIRENTRY_ATTRS::READ_ONLY)
                 {
                     ESP_LOGV(TAG, "Attempt to write to read only file.");
                     return -1;
                 }
-                size_t file_offset = (lba * s_boot_block.sector_size) + offset;
-                uint8_t *target = s_root_directory[index].content + file_offset;
+                uint8_t *target = (uint8_t *)s_root_directory[index].content;
+                target += (lba * s_boot_block.sector_size) + offset;
                 memcpy(target, buffer, bufsize);
             }
         }

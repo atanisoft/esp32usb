@@ -21,16 +21,16 @@
 
 #include <string>
 
-enum
+enum esp_usb_endpoint_t
 {
     ENDPOINT_CDC = 0x02,
     ENDPOINT_MSC = 0x03,
     ENDPOINT_MIDI = 0x05,
     ENDPOINT_VENDOR = 0x06,
     ENDPOINT_NOTIF = 0x81,
-} esp_usb_endpoint_t;
+};
 
-enum
+enum esp_usb_descriptor_index_t
 {
     USB_DESC_MANUFACTURER = 1,
     USB_DESC_PRODUCT,
@@ -41,7 +41,7 @@ enum
     USB_DESC_VENDOR,
     USB_DESC_MIDI,
     USB_DESC_MAX_COUNT
-} esp_usb_descriptor_index_t;
+};
 
 #if CONFIG_TINYUSB_HID_ENABLED
 enum {
@@ -50,7 +50,7 @@ enum {
 } esp_usb_hid_report_t;
 #endif
 
-enum
+enum esp_usb_interface_t
 {
 #if CONFIG_TINYUSB_CDC_ENABLED
     ITF_NUM_CDC = 0,
@@ -70,7 +70,7 @@ enum
     ITF_NUM_VENDOR,
 #endif
     ITF_NUM_TOTAL
-} esp_usb_interface_t;
+};
 
 void init_usb_subsystem(bool external_phy = false);
 void start_usb_task();
