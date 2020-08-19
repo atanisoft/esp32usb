@@ -105,7 +105,7 @@ void start_usb_task()
 #define _PID_MAP(itf, n)  ((CFG_TUD_##itf) << (n))
 
 // When CDC is enabled set the default descriptor to use ACM mode.
-#if CONFIG_USB_CDC_ENABLED
+#if CONFIG_TINYUSB_CDC_ENABLED
 #define USB_DEVICE_CLASS TUSB_CLASS_MISC
 #define USB_DEVICE_SUBCLASS MISC_SUBCLASS_COMMON
 #define USB_DEVICE_PROTOCOL MISC_PROTOCOL_IAD
@@ -137,11 +137,11 @@ static tusb_desc_device_t s_descriptor =
 
 static constexpr uint16_t USB_DESCRIPTORS_CONFIG_TOTAL_LEN =
     TUD_CONFIG_DESC_LEN +
-    (CONFIG_USB_CDC_ENABLED * TUD_CDC_DESC_LEN) +
-    (CONFIG_USB_MSC_ENABLED * TUD_MSC_DESC_LEN) +
-    (CONFIG_USB_HID_ENABLED * TUD_HID_DESC_LEN) +
-    (CONFIG_USB_VENDOR_ENABLED * TUD_VENDOR_DESC_LEN) +
-    (CONFIG_USB_MIDI_ENABLED * TUD_MIDI_DESC_LEN);
+    (CONFIG_TINYUSB_CDC_ENABLED * TUD_CDC_DESC_LEN) +
+    (CONFIG_TINYUSB_MSC_ENABLED * TUD_MSC_DESC_LEN) +
+    (CONFIG_TINYUSB_HID_ENABLED * TUD_HID_DESC_LEN) +
+    (CONFIG_TINYUSB_VENDOR_ENABLED * TUD_VENDOR_DESC_LEN) +
+    (CONFIG_TINYUSB_MIDI_ENABLED * TUD_MIDI_DESC_LEN);
 
 uint8_t const desc_configuration[] =
 {
@@ -149,27 +149,27 @@ uint8_t const desc_configuration[] =
     TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, USB_DESCRIPTORS_CONFIG_TOTAL_LEN,
                           TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP,
                           CONFIG_TINYUSB_MAX_POWER_USAGE),
-#if CONFIG_USB_CDC_ENABLED
+#if CONFIG_TINYUSB_CDC_ENABLED
     // Interface number, string index, EP notification address and size, EP data address (out, in) and size.
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, USB_DESC_CDC, ENDPOINT_NOTIF,
                        8, ENDPOINT_CDC, 0x80 | ENDPOINT_CDC, 64),
 #endif
-#if CONFIG_USB_MSC_ENABLED
+#if CONFIG_TINYUSB_MSC_ENABLED
     // Interface number, string index, EP Out & EP In address, EP size
     TUD_MSC_DESCRIPTOR(ITF_NUM_MSC, USB_DESC_MSC, ENDPOINT_MSC,
                        0x80 | ENDPOINT_MSC, 64), // highspeed 512
 #endif
-#if CONFIG_USB_HID_ENABLED
+#if CONFIG_TINYUSB_HID_ENABLED
     // Interface number, string index, protocol, report descriptor len, EP In address, size & polling interval
     TUD_HID_DESCRIPTOR(ITF_NUM_HID, USB_DESC_HID, HID_PROTOCOL_NONE,
                        sizeof(desc_hid_report), 0x84, 16, 10),
 #endif
-#if CONFIG_USB_VENDOR_ENABLED
+#if CONFIG_TINYUSB_VENDOR_ENABLED
     // Interface number, string index, EP Out & IN address, EP size
     TUD_VENDOR_DESCRIPTOR(ITF_NUM_VENDOR, USB_DESC_VENDOR, ENDPOINT_VENDOR,
                           0x80 | ENDPOINT_VENDOR, 64),
 #endif
-#if CONFIG_USB_MIDI_ENABLED
+#if CONFIG_TINYUSB_MIDI_ENABLED
     // Interface number, string index, EP Out & EP In address, EP size
     TUD_MIDI_DESCRIPTOR(ITF_NUM_MIDI, USB_DESC_MIDI, ENDPOINT_MIDI,
                         0x80 | ENDPOINT_MIDI,

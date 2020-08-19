@@ -55,45 +55,45 @@ extern "C" {
 //--------------------------------------------------------------------
 // KCONFIG DEFAULT CONFIGURATION
 //--------------------------------------------------------------------
-#ifndef CONFIG_USB_CDC_ENABLED
-#define CONFIG_USB_CDC_ENABLED 0
+#ifndef CONFIG_TINYUSB_CDC_ENABLED
+#define CONFIG_TINYUSB_CDC_ENABLED 0
 #endif
 
-#ifndef CONFIG_USB_MSC_ENABLED
-#define CONFIG_USB_MSC_ENABLED 0
+#ifndef CONFIG_TINYUSB_MSC_ENABLED
+#define CONFIG_TINYUSB_MSC_ENABLED 0
 #endif
 
-#ifndef CONFIG_USB_HID_ENABLED
-#define CONFIG_USB_HID_ENABLED 0
+#ifndef CONFIG_TINYUSB_HID_ENABLED
+#define CONFIG_TINYUSB_HID_ENABLED 0
 #endif
 
-#ifndef CONFIG_USB_MIDI_ENABLED
-#define CONFIG_USB_MIDI_ENABLED 0
+#ifndef CONFIG_TINYUSB_MIDI_ENABLED
+#define CONFIG_TINYUSB_MIDI_ENABLED 0
 #endif
 
-#ifndef CONFIG_USB_VENDOR_ENABLED
-#define CONFIG_USB_VENDOR_ENABLED 0
+#ifndef CONFIG_TINYUSB_VENDOR_ENABLED
+#define CONFIG_TINYUSB_VENDOR_ENABLED 0
 #endif
 
-#ifndef CONFIG_USB_CUSTOM_CLASS_ENABLED
-#define CONFIG_USB_CUSTOM_CLASS_ENABLED 0
+#ifndef CONFIG_TINYUSB_CUSTOM_CLASS_ENABLED
+#define CONFIG_TINYUSB_CUSTOM_CLASS_ENABLED 0
 #endif
 
 //--------------------------------------------------------------------
 // DEVICE CONFIGURATION
 //--------------------------------------------------------------------
-#define CFG_TUD_CDC CONFIG_USB_CDC_ENABLED
-#define CFG_TUD_MSC CONFIG_USB_MSC_ENABLED
-#define CFG_TUD_HID CONFIG_USB_HID_ENABLED
-#define CFG_TUD_MIDI CONFIG_USB_MIDI_ENABLED
-#define CFG_TUD_VENDOR CONFIG_USB_VENDOR_ENABLED
-#define CFG_TUD_CUSTOM_CLASS CONFIG_USB_CUSTOM_CLASS_ENABLED
+#define CFG_TUD_CDC CONFIG_TINYUSB_CDC_ENABLED
+#define CFG_TUD_MSC CONFIG_TINYUSB_MSC_ENABLED
+#define CFG_TUD_HID CONFIG_TINYUSB_HID_ENABLED
+#define CFG_TUD_MIDI CONFIG_TINYUSB_MIDI_ENABLED
+#define CFG_TUD_VENDOR CONFIG_TINYUSB_VENDOR_ENABLED
+#define CFG_TUD_CUSTOM_CLASS CONFIG_TINYUSB_CUSTOM_CLASS_ENABLED
 
 //--------------------------------------------------------------------
 // CDC FIFO CONFIGURATION
 //--------------------------------------------------------------------
-#define CFG_TUD_CDC_RX_BUFSIZE CONFIG_USB_CDC_RX_BUFSIZE
-#define CFG_TUD_CDC_TX_BUFSIZE CONFIG_USB_CDC_TX_BUFSIZE
+#define CFG_TUD_CDC_RX_BUFSIZE CONFIG_TINYUSB_CDC_RX_BUFSIZE
+#define CFG_TUD_CDC_TX_BUFSIZE CONFIG_TINYUSB_CDC_TX_BUFSIZE
 
 //--------------------------------------------------------------------
 // MSC BUFFER CONFIGURATION
@@ -101,14 +101,14 @@ extern "C" {
 // NOTE: This is the block size for read/write operations via all
 // defined callbacks.
 //--------------------------------------------------------------------
-#define CFG_TUD_MSC_BUFSIZE CONFIG_USB_MSC_BUFSIZE
+#define CFG_TUD_MSC_BUFSIZE CONFIG_TINYUSB_MSC_BUFSIZE
 
 //--------------------------------------------------------------------
 // HID BUFFER CONFIGURATION
 //
 // NOTE: This should be sufficient to hold ID (if any) + Data
 //--------------------------------------------------------------------
-#define CFG_TUD_HID_BUFSIZE CONFIG_USB_HID_BUFSIZE
+#define CFG_TUD_HID_BUFSIZE CONFIG_TINYUSB_HID_BUFSIZE
 
 //--------------------------------------------------------------------
 // VENDOR FIFO CONFIGURATION

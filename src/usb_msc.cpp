@@ -14,7 +14,7 @@
 
 #include "usb.h"
 
-#if CONFIG_USB_MSC_ENABLED
+#if CONFIG_TINYUSB_MSC_ENABLED
 
 #include <esp_log.h>
 #include <endian.h>
@@ -526,4 +526,4 @@ int32_t tud_msc_scsi_cb (uint8_t lun, uint8_t const scsi_cmd[16], void* buffer,
 
 } // extern "C"
 
-#endif // CONFIG_USB_MSC_ENABLED
+#endif // CONFIG_TINYUSB_MSC_ENABLED
