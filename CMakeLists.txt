@@ -1,4 +1,4 @@
-idf_component_register(REQUIRES esp_rom freertos soc driver)
+idf_component_register(REQUIRES esp_rom app_update spi_flash freertos soc driver)
 
 idf_component_get_property( FREERTOS_ORIG_INCLUDE_PATH freertos ORIG_INCLUDE_PATH)
 

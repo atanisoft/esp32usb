@@ -191,15 +191,15 @@ static uint16_t _desc_str[32];
 // =============================================================================
 // Device descriptor functions
 // =============================================================================
-void configure_usb_descriptor(tusb_desc_device_t *desc, uint16_t bcdDevice)
+void configure_usb_descriptor(tusb_desc_device_t *desc, uint16_t version)
 {
     if (desc)
     {
         memcpy(&s_descriptor, desc, sizeof(tusb_desc_device_t));
     }
-    else if (bcdDevice)
+    else if (version)
     {
-        s_descriptor.bcdDevice = bcdDevice;
+        s_descriptor.bcdDevice = version;
     }
 }
 
@@ -207,7 +207,10 @@ void configure_usb_descriptor_str(esp_usb_descriptor_index_t index,
                                   const char *value)
 {
     s_str_descriptor[index].assign(value);
-    s_str_descriptor[index].resize(31);
+    if (s_str_descriptor[index].length() > 31)
+    {
+        s_str_descriptor[index].resize(31);
+    }
     ESP_LOGV(TAG, "USB-DESC(%d) %s\n", index, value);
 }
 
