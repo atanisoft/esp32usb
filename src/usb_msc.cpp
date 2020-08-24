@@ -12,15 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#define MSC_LOG_LEVEL_BOOT_SECTOR ESP_LOG_VERBOSE
-#define MSC_LOG_LEVEL_ROOT_DIRECTORY ESP_LOG_VERBOSE
-#define MSC_LOG_LEVEL_FAT_TABLE ESP_LOG_VERBOSE
-
-//#define LOG_LOCAL_LEVEL 6
-
 #include "usb.h"
 
 #if CONFIG_TINYUSB_MSC_ENABLED
+
+// these can be used to fine tune the debug log levels for hex dump of sector
+// data within the read callback.
+#define MSC_LOG_LEVEL_BOOT_SECTOR ESP_LOG_VERBOSE
+#define MSC_LOG_LEVEL_ROOT_DIRECTORY ESP_LOG_VERBOSE
+#define MSC_LOG_LEVEL_FAT_TABLE ESP_LOG_VERBOSE
+// in order for debug data to be printed this needs to be defined prior to
+// inclusion of esp_log.h. The value below is one higher than ESP_LOG_VERBOSE.
+//#define LOG_LOCAL_LEVEL 6
 
 #include <esp_log.h>
 #include <esp_ota_ops.h>
@@ -101,7 +104,7 @@ typedef struct TU_ATTR_PACKED
     uint16_t root_directory_entries;        //  19
     uint16_t total_sectors_16;              //  21
     uint8_t media_descriptor;               //  22
-    uint16_t sectors_per_fat;               //  24
+    uint16_t sectors_per_fat_chain;         //  24
     uint16_t sectors_per_track;             //  26
     uint16_t heads;                         //  28
     uint32_t hidden_sectors;                //  32
@@ -166,38 +169,37 @@ typedef struct
     std::string printable_name;
 } fat_file_entry_t;
 
-static const uint16_t DISK_SECTOR_SIZE = 512;
-static const uint16_t FAT_BLOCK_COUNT = 8192;
-static const uint8_t RESERVED_SECTOR_COUNT = 1;
-static const uint8_t FAT_ROOT_DIR_SECTORS = 4;
+static constexpr uint16_t DIRENTRIES_PER_SECTOR =
+    (CONFIG_TINYUSB_MSC_VDISK_SECTOR_SIZE / sizeof(fat_direntry_t));
+static constexpr uint16_t SECTORS_PER_FAT_CHAIN = 
+    ((CONFIG_TINYUSB_MSC_VDISK_SECTOR_COUNT * 2) +
+     (CONFIG_TINYUSB_MSC_VDISK_SECTOR_SIZE - 1))
+    / CONFIG_TINYUSB_MSC_VDISK_SECTOR_SIZE;
 
-static const uint16_t DIRENTRIES_PER_SECTOR =
-    (DISK_SECTOR_SIZE / sizeof(fat_direntry_t));
-static const uint16_t SECTORS_PER_FAT_BLOCK = 
-    ((FAT_BLOCK_COUNT * 2) + (DISK_SECTOR_SIZE - 1)) / DISK_SECTOR_SIZE;
-static const uint16_t ROOT_DIRECTORY_ENTRIES =
-    FAT_ROOT_DIR_SECTORS * DIRENTRIES_PER_SECTOR;
+static constexpr uint16_t FAT_COPY_0_FIRST_SECTOR =
+    CONFIG_TINYUSB_MSC_VDISK_RESERVED_SECTOR_COUNT;
+static constexpr uint16_t FAT_COPY_1_FIRST_SECTOR =
+    FAT_COPY_0_FIRST_SECTOR + SECTORS_PER_FAT_CHAIN;
+static constexpr uint16_t ROOT_DIR_FIRST_SECTOR =
+    FAT_COPY_1_FIRST_SECTOR + SECTORS_PER_FAT_CHAIN;
+static constexpr uint16_t FILE_CONTENT_FIRST_SECTOR =
+    ROOT_DIR_FIRST_SECTOR +
+    (CONFIG_TINYUSB_MSC_VDISK_FILE_COUNT / DIRENTRIES_PER_SECTOR);
 
-static const uint16_t FAT_COPY_0_FIRST_SECTOR = RESERVED_SECTOR_COUNT;
-static const uint16_t FAT_COPY_1_FIRST_SECTOR =
-    FAT_COPY_0_FIRST_SECTOR + SECTORS_PER_FAT_BLOCK;
-static const uint16_t ROOT_DIR_FIRST_SECTOR =
-    FAT_COPY_1_FIRST_SECTOR + SECTORS_PER_FAT_BLOCK;
-static const uint16_t FILE_CONTENT_FIRST_SECTOR =
-    ROOT_DIR_FIRST_SECTOR + FAT_ROOT_DIR_SECTORS;
+static constexpr uint16_t FAT_CLUSTER_END_OF_FILE = 0xFFFF;
 
 static boot_sector_t s_boot_sector =
 {
     .jump_instruction = {0xEB, 0x3C, 0x90},
     .oem_info = {'M','S','D','O','S','5','.','0'},
-    .sector_size = DISK_SECTOR_SIZE,
+    .sector_size = CONFIG_TINYUSB_MSC_VDISK_SECTOR_SIZE,
     .sectors_per_cluster = 1,
-    .reserved_sectors = RESERVED_SECTOR_COUNT,
+    .reserved_sectors = CONFIG_TINYUSB_MSC_VDISK_RESERVED_SECTOR_COUNT,
     .fat_copies = 2,
-    .root_directory_entries = ROOT_DIRECTORY_ENTRIES,
-    .total_sectors_16 = FAT_BLOCK_COUNT,
+    .root_directory_entries = CONFIG_TINYUSB_MSC_VDISK_FILE_COUNT,
+    .total_sectors_16 = CONFIG_TINYUSB_MSC_VDISK_SECTOR_COUNT,
     .media_descriptor = 0xF8,
-    .sectors_per_fat = SECTORS_PER_FAT_BLOCK,
+    .sectors_per_fat_chain = SECTORS_PER_FAT_CHAIN,
     .sectors_per_track = 1,
     .heads = 1,
     .hidden_sectors = 0,
@@ -233,7 +235,7 @@ void configure_virtual_disk(std::string label, uint32_t serial_number)
              "USB Virtual disk %-11.11s\n"
              "%d total sectors (%d bytes)\n"
              "%d reserved sector(s)\n"
-             "%d sectors per FAT block (%d bytes)\n"
+             "%d sectors per cluster (%d bytes)\n"
              "fat0 sector start: %d\n"
              "fat1 sector start: %d\n"
              "root directory sector start: %d (%d entries, %d per sector)\n"
@@ -242,31 +244,39 @@ void configure_virtual_disk(std::string label, uint32_t serial_number)
            , s_boot_sector.total_sectors_16
            , s_boot_sector.total_sectors_16 * s_boot_sector.sector_size
            , s_boot_sector.reserved_sectors
-           , s_boot_sector.sectors_per_fat
-           , s_boot_sector.sectors_per_fat * s_boot_sector.sector_size
+           , s_boot_sector.sectors_per_fat_chain
+           , s_boot_sector.sectors_per_fat_chain * s_boot_sector.sector_size
            , FAT_COPY_0_FIRST_SECTOR
            , FAT_COPY_1_FIRST_SECTOR
            , ROOT_DIR_FIRST_SECTOR
-           , ROOT_DIRECTORY_ENTRIES
-           , FILE_CONTENT_FIRST_SECTOR
+           , CONFIG_TINYUSB_MSC_VDISK_FILE_COUNT
            , DIRENTRIES_PER_SECTOR
+           , FILE_CONTENT_FIRST_SECTOR
     );
+
     // convert fields to little endian
     s_boot_sector.sector_size = htole16(s_boot_sector.sector_size);
     s_boot_sector.reserved_sectors = htole16(s_boot_sector.reserved_sectors);
     s_boot_sector.root_directory_entries = htole16(s_boot_sector.root_directory_entries);
     s_boot_sector.total_sectors_16 = htole16(s_boot_sector.total_sectors_16);
-    s_boot_sector.sectors_per_fat = htole16(s_boot_sector.sectors_per_fat);
+    s_boot_sector.sectors_per_fat_chain = htole16(s_boot_sector.sectors_per_fat_chain);
     s_boot_sector.sectors_per_track = htole16(s_boot_sector.sectors_per_track);
     s_boot_sector.heads = htole16(s_boot_sector.heads);
     s_boot_sector.hidden_sectors = htole32(s_boot_sector.hidden_sectors);
     s_boot_sector.heads = htole32(s_boot_sector.heads);
 }
 
-void register_virtual_file(const std::string name, const char *content,
-                           uint32_t size, bool read_only,
-                           const esp_partition_t *partition)
+esp_err_t register_virtual_file(const std::string name, const char *content,
+                                uint32_t size, bool read_only,
+                                const esp_partition_t *partition)
 {
+    if (s_root_directory.size() > CONFIG_TINYUSB_MSC_VDISK_FILE_COUNT)
+    {
+        ESP_LOGE(TAG
+               , "Maximum file count has been reached, rejecting new file!");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     fat_file_entry_t file;
     // zero out the file descriptor block
     bzero(&file, sizeof(fat_file_entry_t));
@@ -333,15 +343,19 @@ void register_virtual_file(const std::string name, const char *content,
              "File(%s) sectors: %d - %d, clusters: %d - %d, %d bytes",
              file.printable_name.c_str(), file.start_sector, file.end_sector,
              file.start_cluster, file.end_cluster, size);
+
+    return ESP_OK;
 }
 
-void add_readonly_file_to_virtual_disk(const std::string filename,
-                                       const char *content, uint32_t size)
+esp_err_t add_readonly_file_to_virtual_disk(const std::string filename,
+                                            const char *content, uint32_t size)
 {
-    register_virtual_file(filename, content, size, true, nullptr);
+    return register_virtual_file(filename, content, size, true, nullptr);
 }
 
-void add_partition_to_virtual_disk(const std::string partition_name, const std::string filename, bool writable)
+esp_err_t add_partition_to_virtual_disk(const std::string partition_name
+                                      , const std::string filename
+                                      , bool writable)
 {
     const esp_partition_t *part =
         esp_partition_find_first(ESP_PARTITION_TYPE_APP,
@@ -356,19 +370,38 @@ void add_partition_to_virtual_disk(const std::string partition_name, const std::
     }
     if (part != nullptr)
     {
-        register_virtual_file(filename, nullptr, part->size, writable, part);
+        return register_virtual_file(filename, nullptr, part->size, writable
+                                   , part);
     }
+    ESP_LOGE(TAG, "Unable to find a partition with name '%s'!"
+           , partition_name.c_str());
+    return ESP_ERR_NOT_FOUND;
 }
 
-void add_firmware_to_virtual_disk(const std::string current_name, const std::string previous_name)
+// registers the firmware as a file in the virtual disk.
+esp_err_t add_firmware_to_virtual_disk(const std::string current_name,
+                                       const std::string previous_name)
 {
+    esp_err_t state = ESP_FAIL;
     const esp_partition_t *current_part = esp_ota_get_running_partition();
-    const esp_partition_t *next_part = esp_ota_get_next_update_partition(nullptr);
-    register_virtual_file(current_name, nullptr, current_part->size, true, current_part);
-    if (next_part != nullptr && next_part != current_part)
+    if (current_part != nullptr)
     {
-        register_virtual_file(previous_name, nullptr, next_part->size, false, next_part);
+        state = ESP_ERROR_CHECK_WITHOUT_ABORT(
+            register_virtual_file(current_name, nullptr, current_part->size
+                                , true, current_part));
     }
+    if (state == ESP_OK && !previous_name.empty())
+    {
+        const esp_partition_t *next_part =
+            esp_ota_get_next_update_partition(nullptr);
+        if (next_part != nullptr && next_part != current_part)
+        {
+            state = ESP_ERROR_CHECK_WITHOUT_ABORT(
+                register_virtual_file(previous_name, nullptr
+                                    , next_part->size, false, next_part));
+        }
+    }
+    return state;
 }
 
 // =============================================================================
@@ -382,9 +415,9 @@ extern "C"
 void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8],
                         uint8_t product_id[16], uint8_t product_rev[4])
 {
-    memcpy(vendor_id, s_vendor_id, strlen(s_vendor_id) > 8 ? 8 : strlen(s_vendor_id));
-    memcpy(product_id, s_product_id, strlen(s_product_id) > 16 ? 16 : strlen(s_product_id));
-    memcpy(product_rev, s_product_rev, strlen(s_product_rev) > 4 ? 4 : strlen(s_product_rev));
+    memcpy(vendor_id, s_vendor_id, std::min((size_t)8, strlen(s_vendor_id)));
+    memcpy(product_id, s_product_id, std::min((size_t)16, strlen(s_product_id)));
+    memcpy(product_rev, s_product_rev, std::min((size_t)4, strlen(s_product_rev)));
 }
 
 // Invoked for Test Unit Ready command.
@@ -403,6 +436,8 @@ void tud_msc_capacity_cb(uint8_t lun, uint32_t *block_count,
 }
 
 // Callback for READ10 command.
+// @todo: Ensure reads are bounds checked against bufsize so the MSC buffer can
+// be configured via Kconfig.
 int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
                           void *buffer, uint32_t bufsize)
 {
@@ -415,45 +450,54 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
     }
     else if (lba < ROOT_DIR_FIRST_SECTOR)
     {
-        bool table_modified = false;
-        uint32_t fat_table = (lba - FAT_COPY_0_FIRST_SECTOR);
-        if (fat_table > s_boot_sector.sectors_per_fat)
+        uint32_t fat_chain = (lba - FAT_COPY_0_FIRST_SECTOR);
+        if (fat_chain > s_boot_sector.sectors_per_fat_chain)
         {
-            fat_table -= s_boot_sector.sectors_per_fat;
+            fat_chain -= s_boot_sector.sectors_per_fat_chain;
         }
-        uint32_t fat_table_start_sector = fat_table * 256;
-        uint32_t fat_table_end_sector = (fat_table + 1) * 256;
-        ESP_LOGV(TAG, "FAT Table: %d (sector: %d -> %d)", fat_table,
-                 fat_table_start_sector, fat_table_end_sector);
+        uint32_t cluster_start = fat_chain * 256;
+        uint32_t cluster_end = ((fat_chain + 1) * 256) - 1;
+        ESP_LOGI(TAG, "FAT Chain: %d (sector: %d-%d)", fat_chain,
+                 cluster_start, cluster_end);
         uint16_t *buf_16 = (uint16_t *)buffer;
-        if (fat_table == 0)
+        if (fat_chain == 0)
         {
-            table_modified = true;
             // cluster zero is reserved for FAT ID and media descriptor.
-            buf_16[0] = htole16(0xFF | s_boot_sector.media_descriptor);
+            buf_16[0] = htole16(0xFF00 | s_boot_sector.media_descriptor);
             // cluster one is reserved.
-            buf_16[1] = htole16(0xFFFF);
+            buf_16[1] = FAT_CLUSTER_END_OF_FILE;
         }
+
         for(auto &file : s_root_directory)
         {
-            uint32_t start_sector = file.start_sector;
-            uint32_t end_sector = file.end_sector;
-            if (fat_table_start_sector >= start_sector &&
-                fat_table_start_sector <= end_sector)
+            // check if the file is part of this fat cluster
+                // A: file start cluster
+            // B: file end cluster
+            // C: cluster start
+            // D: cluster end
+            // in_range: A <= D AND B >= C
+            if (file.start_cluster <= cluster_end &&
+                file.end_cluster >= cluster_start)
             {
-                table_modified = true;
-                for(size_t fat_cluster_index = 0; fat_cluster_index < 256;
-                    fat_cluster_index++)
+                ESP_LOGI(TAG, "File: %s (%d-%d) is in range (%d-%d)"
+                       , file.printable_name.c_str(), file.start_cluster, file.end_cluster
+                       , cluster_start, cluster_end);
+                for(size_t index = 0; index < 256; index++)
                 {
-                    // convert fat_cluster_index into the on-disk sector
-                    uint32_t sector = (fat_table * 256) + fat_cluster_index;
-                    if (sector > start_sector && sector < end_sector)
+                    uint32_t target_cluster = cluster_start + index;
+                    // if the target cluster is between start and end cluster
+                    // of the file mark it as part of the file.
+                    if (target_cluster >= file.start_cluster &&
+                        target_cluster <= file.end_cluster)
                     {
-                        buf_16[fat_cluster_index] = htole16(sector + 1);
-                    }
-                    else if (sector == end_sector)
-                    {
-                        buf_16[fat_cluster_index] = htole16(0xFFFF);
+                        if (target_cluster != file.end_sector)
+                        {
+                            buf_16[index] = htole16(target_cluster + 1);
+                        }
+                        else
+                        {
+                            buf_16[index] = FAT_CLUSTER_END_OF_FILE;
+                        }
                     }
                 }
             }
@@ -462,32 +506,46 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
     }
     else if (lba < FILE_CONTENT_FIRST_SECTOR)
     {
-        ESP_LOGV(TAG, "ROOT DIRECTORY\n");
+        uint8_t entries = 0;
+        fat_direntry_t *d = static_cast<fat_direntry_t *>(buffer);
         // Requested sector of the root directory
         uint32_t sector_idx = (lba - ROOT_DIR_FIRST_SECTOR);
+        ESP_LOGI(TAG, "reading root directory sector %d(%d,%d,%d)", sector_idx,
+                 lba, bufsize, offset);
         if (sector_idx == 0)
         {
-            fat_direntry_t *d = static_cast<fat_direntry_t *>(buffer);
+            ESP_LOGD(TAG, "Adding disk volume label: %11.11s",
+                     s_boot_sector.volume_label);
             // NOTE this will overrun d->name and spill over into d->ext
             memcpy(d->name, s_boot_sector.volume_label, 11);
-            d->attrs = FAT_DIRENTRY_ATTRS::DIRENT_ARCHIVE | FAT_DIRENTRY_ATTRS::DIRENT_VOLUME_LABEL;
-            // move beyond the first entry
+            d->attrs = FAT_DIRENTRY_ATTRS::DIRENT_ARCHIVE |
+                       FAT_DIRENTRY_ATTRS::DIRENT_VOLUME_LABEL;
             d++;
-            for(auto &file : s_root_directory)
-            {
-                // note this will clear the file extension.
-                space_padded_memcpy(d->name, file.name, 11);
-                space_padded_memcpy(d->ext, file.ext, 3);
-                d->attrs = file.flags;
-                d->size = file.size;
-                d->start_cluster = file.start_cluster;
-                d->create_date = 0x4d99;
-                d->update_date = 0x4d99;
-                // move to next directory entry
-                d++;
-            }
+            entries++;
         }
-        ESP_LOG_BUFFER_HEX_LEVEL(TAG, buffer, bufsize, MSC_LOG_LEVEL_ROOT_DIRECTORY);
+        size_t max_index = std::min((sector_idx + 1) * DIRENTRIES_PER_SECTOR,
+                                    s_root_directory.size());
+        for (size_t index = (sector_idx * DIRENTRIES_PER_SECTOR);
+             index < max_index;
+             index++)
+        {
+            auto &file = s_root_directory[index];
+            // note this will clear the file extension.
+            space_padded_memcpy(d->name, file.name, 11);
+            space_padded_memcpy(d->ext, file.ext, 3);
+            ESP_LOGI(TAG, "Adding file: %11.11s", d->name);
+            d->attrs = file.flags;
+            d->size = file.size;
+            d->start_cluster = file.start_cluster;
+            d->create_date = 0x4d99;
+            d->update_date = 0x4d99;
+            // move to the next directory entry in the buffer
+            d++;
+            entries++;
+        }
+        ESP_LOGI(TAG, "Directory entries added: %d", entries);
+        ESP_LOG_BUFFER_HEX_LEVEL(TAG, buffer, bufsize,
+                                 MSC_LOG_LEVEL_ROOT_DIRECTORY);
     }
     else
     {

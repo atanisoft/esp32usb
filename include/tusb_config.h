@@ -1,4 +1,4 @@
-// Copyright 2020 Espressif Systems (Shanghai) PTE LTD
+// Copyright 2020 Espressif Systems (Shanghai) Co. Ltd.
 // Copyright 2020 Mike Dunston (https://github.com/atanisoft)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +17,8 @@
 #include "sdkconfig.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 //--------------------------------------------------------------------
@@ -77,6 +78,38 @@ extern "C" {
 
 #ifndef CONFIG_TINYUSB_CUSTOM_CLASS_ENABLED
 #define CONFIG_TINYUSB_CUSTOM_CLASS_ENABLED 0
+#endif
+
+#ifndef CONFIG_TINYUSB_CDC_RX_BUFSIZE
+#define CONFIG_TINYUSB_CDC_RX_BUFSIZE 64
+#endif
+
+#ifndef CONFIG_TINYUSB_CDC_TX_BUFSIZE
+#define CONFIG_TINYUSB_CDC_TX_BUFSIZE 64
+#endif
+
+#ifndef CONFIG_TINYUSB_MSC_BUFSIZE
+#define CONFIG_TINYUSB_MSC_BUFSIZE 512
+#endif
+
+#ifndef CONFIG_TINYUSB_HID_BUFSIZE
+#define CONFIG_TINYUSB_HID_BUFSIZE 16
+#endif
+
+#ifndef CONFIG_TINYUSB_VENDOR_RX_BUFSIZE
+#define CONFIG_TINYUSB_VENDOR_RX_BUFSIZE 64
+#endif
+
+#ifndef CONFIG_TINYUSB_VENDOR_TX_BUFSIZE
+#define CONFIG_TINYUSB_VENDOR_TX_BUFSIZE 64
+#endif
+
+#ifndef CONFIG_TINYUSB_MIDI_RX_BUFSIZE
+#define CONFIG_TINYUSB_MIDI_RX_BUFSIZE 64
+#endif
+
+#ifndef CONFIG_TINYUSB_MIDI_TX_BUFSIZE
+#define CONFIG_TINYUSB_MIDI_TX_BUFSIZE 64
 #endif
 
 //--------------------------------------------------------------------

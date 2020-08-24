@@ -1,4 +1,4 @@
-// Copyright 2020 Espressif Systems (Shanghai) PTE LTD
+// Copyright 2020 Espressif Systems (Shanghai) Co. Ltd.
 // Copyright 2020 Mike Dunston (https://github.com/atanisoft)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,93 +13,130 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "sdkconfig.h"
+
+// if TinyUSB debug is enabled set the local log level higher than any of the
+// pre-defined log levels.
+#if CONFIG_TINYUSB_DEBUG
+#define LOG_LOCAL_LEVEL 0xFF
+#endif
+
 #include <driver/gpio.h>
 #include <driver/periph_ctrl.h>
 #include <esp_log.h>
-#include <esp_rom_gpio.h>
 #include <esp_task.h>
+#include <esp32s2/rom/usb/chip_usb_dw_wrapper.h>
+#include <esp32s2/rom/usb/usb_persist.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <hal/usb_hal.h>
 #include <soc/gpio_periph.h>
+#include <soc/rtc_cntl_reg.h>
 #include <soc/usb_periph.h>
+#include <soc/usb_wrap_struct.h>
 #include <string>
 #include "usb.h"
 
 static constexpr const char * const TAG = "USB";
 
+#if CONFIG_TINYUSB_CDC_ENABLED
+void init_usb_cdc();
+#endif
+
 void init_usb_subsystem(bool external_phy)
 {
-    ESP_LOGV(TAG, "Initializing USB peripheral");
-    periph_module_reset(PERIPH_USB_MODULE);
-    periph_module_enable(PERIPH_USB_MODULE);
+    ESP_LOGI(TAG, "Initializing USB peripheral");
+
+    if ((chip_usb_get_persist_flags() & USBDC_PERSIST_ENA) == USBDC_PERSIST_ENA)
+    {
+        // Enable USB/IO_MUX peripheral reset on next reboot.
+        REG_CLR_BIT(RTC_CNTL_USB_CONF_REG, RTC_CNTL_IO_MUX_RESET_DISABLE);
+        REG_CLR_BIT(RTC_CNTL_USB_CONF_REG, RTC_CNTL_USB_RESET_DISABLE);
+    }
+    else
+    {
+        // Normal startup flow, reinitailize the USB peripheral.
+        periph_module_reset(PERIPH_USB_MODULE);
+        periph_module_enable(PERIPH_USB_MODULE);
+    }
 
     usb_hal_context_t hal;
     hal.use_external_phy = external_phy;
-    ESP_LOGV(TAG, "Initializing USB HAL");
+    ESP_LOGD(TAG, "Initializing USB HAL");
     usb_hal_init(&hal);
 
-    for (const usb_iopin_dsc_t *iopin = usb_periph_iopins; iopin->pin != GPIO_NUM_NC; ++iopin)
+    if (external_phy)
     {
-        if (external_phy || iopin->ext_phy_only == 0)
+        gpio_output_set_high(0x10, 0, 0x1E, 0xE);
+    }
+    else
+    {
+        ESP_LOGV(TAG, "Setting GPIO %d drive to %d", USBPHY_DM_NUM
+               , GPIO_DRIVE_CAP_3);
+        gpio_set_drive_capability((gpio_num_t)USBPHY_DM_NUM
+                                , (gpio_drive_cap_t)GPIO_DRIVE_CAP_3);
+        ESP_LOGV(TAG, "Setting GPIO %d drive to %d", USBPHY_DP_NUM
+               , GPIO_DRIVE_CAP_3);
+        gpio_set_drive_capability((gpio_num_t)USBPHY_DP_NUM
+                                , (gpio_drive_cap_t)GPIO_DRIVE_CAP_3);
+    }
+
+    for (const usb_iopin_dsc_t* iopin = usb_periph_iopins; iopin->pin != -1;
+         ++iopin)
+    {
+        if (external_phy || (iopin->ext_phy_only == 0))
         {
-            esp_rom_gpio_pad_select_gpio((gpio_num_t)iopin->pin);
+            gpio_pad_select_gpio(iopin->pin);
             if (iopin->is_output)
             {
                 ESP_LOGV(TAG, "Configuring USB GPIO %d as OUTPUT", iopin->pin);
-                esp_rom_gpio_connect_out_signal((gpio_num_t)iopin->pin, iopin->func, false, false);
+                gpio_matrix_out(iopin->pin, iopin->func, false, false);
             }
             else
             {
-                esp_rom_gpio_connect_in_signal((gpio_num_t)iopin->pin, iopin->func, false);
-                if ((iopin->pin != GPIO_MATRIX_CONST_ZERO_INPUT) && (iopin->pin != GPIO_MATRIX_CONST_ONE_INPUT))
-                {
-                    ESP_LOGV(TAG, "Configuring USB GPIO %d as INPUT", iopin->pin);
-                    gpio_set_direction((gpio_num_t)iopin->pin, GPIO_MODE_INPUT);
-                }
+                ESP_LOGV(TAG, "Configuring USB GPIO %d as INPUT", iopin->pin);
+                gpio_matrix_in(iopin->pin, iopin->func, false);
+                gpio_pad_input_enable(iopin->pin);
             }
-            esp_rom_gpio_pad_unhold((gpio_num_t)iopin->pin);
+            gpio_pad_unhold(iopin->pin);
         }
     }
-    if (!external_phy)
-    {
-        ESP_LOGV(TAG, "Setting GPIO %d drive to %d", USBPHY_DM_NUM, GPIO_DRIVE_CAP_3);
-        gpio_set_drive_capability((gpio_num_t)USBPHY_DM_NUM, (gpio_drive_cap_t)GPIO_DRIVE_CAP_3);
-        ESP_LOGV(TAG, "Setting GPIO %d drive to %d", USBPHY_DP_NUM, GPIO_DRIVE_CAP_3);
-        gpio_set_drive_capability((gpio_num_t)USBPHY_DP_NUM, (gpio_drive_cap_t)GPIO_DRIVE_CAP_3);
-    }
-    ESP_LOGV(TAG, "USB system initialized");
+
+#if CONFIG_TINYUSB_CDC_ENABLED
+    init_usb_cdc();
+#endif
+
+    ESP_LOGI(TAG, "USB system initialized");
 }
 
 static void usb_device_task(void *param)
 {
-    ESP_LOGI(TAG, "Starting TinyUSB stack");
-
+    ESP_LOGI(TAG, "Initializing TinyUSB");
     ESP_ERROR_CHECK(tusb_init());
 
+    ESP_LOGI(TAG, "TinyUSB Task (%s) starting execution",
+             CONFIG_TINYUSB_TASK_NAME);
     while (1)
     {
         tud_task();
-        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
-static constexpr uint32_t USB_TASK_STACK_SIZE = 4096L;
-static constexpr UBaseType_t USB_TASK_PRIORITY = ESP_TASK_TCPIP_PRIO;
+// sanity check that the user did not define the task priority too low.
+static_assert(CONFIG_TINYUSB_TASK_PRIORITY > ESP_TASK_MAIN_PRIO,
+              "TinyUSB task must have a higher priority than the app_main task.");
 
 void start_usb_task()
 {
-    BaseType_t res =
-        xTaskCreate(usb_device_task, "esp-usb", USB_TASK_STACK_SIZE, nullptr,
-                    USB_TASK_PRIORITY, nullptr);
-    if (res != pdPASS)
+    if (xTaskCreate(usb_device_task, CONFIG_TINYUSB_TASK_NAME,
+                    CONFIG_TINYUSB_TASK_STACK_SIZE, nullptr,
+                    CONFIG_TINYUSB_TASK_PRIORITY, nullptr) != pdPASS)
     {
-        ESP_LOGE(TAG, "Failed to create USB task!");
+        ESP_LOGE(TAG, "Failed to create task for USB.");
         abort();
     }
+    ESP_LOGI(TAG, "Created TinyUSB task: %s", CONFIG_TINYUSB_TASK_NAME);
 }
-
-#define _PID_MAP(itf, n)  ((CFG_TUD_##itf) << (n))
 
 // When CDC is enabled set the default descriptor to use ACM mode.
 #if CONFIG_TINYUSB_CDC_ENABLED
@@ -112,6 +149,10 @@ void start_usb_task()
 #define USB_DEVICE_PROTOCOL 0x00
 #endif
 
+// Used to generate the USB PID based on enabled interfaces.
+#define _PID_MAP(itf, n)  ((CFG_TUD_##itf) << (n))
+
+/// USB Device Descriptor.
 static tusb_desc_device_t s_descriptor =
 {
     .bLength            = sizeof(tusb_desc_device_t),
@@ -132,6 +173,77 @@ static tusb_desc_device_t s_descriptor =
     .bNumConfigurations = 0x01
 };
 
+/// USB Device Endpoint assignments.
+///
+/// NOTE: The ESP32-S2 has four input FIFOs available, unfortunately this will
+/// result in some overlap between features. The notification endpoint is not
+/// connected to the FIFOs.
+///
+/// @todo switch to dynamic endpoint assignment except for CDC and NOTIF which
+/// require static definitions.
+typedef enum
+{
+    /// Vendor endpoint.
+    ENDPOINT_VENDOR_OUT = 0x01,
+
+    /// Mass Storage endpoint.
+    ENDPOINT_MSC_OUT = 0x02,
+
+    /// CDC endpoint.
+    ///
+    /// NOTE: This matches the ESP32-S2 ROM code mapping.
+    ENDPOINT_CDC_OUT = 0x03,
+
+    /// MIDI endpoint.
+    ENDPOINT_MIDI_OUT = 0x04,
+
+    /// HID endpoint.
+    ENDPOINT_HID_IN = 0x81,
+
+    /// Mass Storage endpoint.
+    ENDPOINT_MSC_IN = 0x82,
+
+    /// Vendor endpoint.
+    ENDPOINT_VENDOR_IN = 0x83,
+
+    /// MIDI endpoint.
+    ENDPOINT_MIDI_IN = 0x83,
+
+    /// CDC endpoint.
+    ///
+    /// NOTE: This matches the ESP32-S2 ROM code mapping.
+    ENDPOINT_CDC_IN = 0x84,
+
+    /// Notification endpoint.
+    ///
+    /// NOTE: This matches the ESP32-S2 ROM code mapping.
+    ENDPOINT_NOTIF = 0x85,
+} esp_usb_endpoint_t;
+
+/// USB Interface indexes.
+typedef enum
+{
+#if CONFIG_TINYUSB_CDC_ENABLED
+    ITF_NUM_CDC = 0,
+    ITF_NUM_CDC_DATA,
+#endif
+#if CONFIG_TINYUSB_MSC_ENABLED
+    ITF_NUM_MSC,
+#endif
+#if CONFIG_TINYUSB_HID_ENABLED
+    ITF_NUM_HID,
+#endif
+#if CONFIG_TINYUSB_MIDI_ENABLED
+    ITF_NUM_MIDI,
+    ITF_NUM_MIDI_STREAMING,
+#endif
+#if CONFIG_TINYUSB_VENDOR_ENABLED 
+    ITF_NUM_VENDOR,
+#endif
+    ITF_NUM_TOTAL
+} esp_usb_interface_t;
+
+/// Total size of the USB device descriptor configuration data.
 static constexpr uint16_t USB_DESCRIPTORS_CONFIG_TOTAL_LEN =
     TUD_CONFIG_DESC_LEN +
     (CONFIG_TINYUSB_CDC_ENABLED * TUD_CDC_DESC_LEN) +
@@ -140,43 +252,58 @@ static constexpr uint16_t USB_DESCRIPTORS_CONFIG_TOTAL_LEN =
     (CONFIG_TINYUSB_VENDOR_ENABLED * TUD_VENDOR_DESC_LEN) +
     (CONFIG_TINYUSB_MIDI_ENABLED * TUD_MIDI_DESC_LEN);
 
-uint8_t const desc_configuration[] =
+#if CONFIG_TINYUSB_CDC_ENABLED
+static_assert(CONFIG_TINYUSB_CDC_FIFO_SIZE == 64, "CDC FIFO size must be 64");
+#endif
+#if CONFIG_TINYUSB_MSC_ENABLED
+static_assert(CONFIG_TINYUSB_MSC_FIFO_SIZE == 64, "MSC FIFO size must be 64");
+#endif
+#if CONFIG_TINYUSB_VENDOR_ENABLED
+static_assert(CONFIG_TINYUSB_VENDOR_FIFO_SIZE == 64
+            , "Vendor FIFO size must be 64");
+#endif
+#if CONFIG_TINYUSB_MIDI_ENABLED
+static_assert(CONFIG_TINYUSB_MIDI_FIFO_SIZE == 64
+            , "MIDI FIFO size must be 64");
+#endif
+
+/// USB device descriptor configuration data.
+uint8_t const desc_configuration[USB_DESCRIPTORS_CONFIG_TOTAL_LEN] =
 {
-    // interface count, string index, total length, attribute, power in mA
-    TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, USB_DESCRIPTORS_CONFIG_TOTAL_LEN,
+    TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0,
+                          USB_DESCRIPTORS_CONFIG_TOTAL_LEN,
                           TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP,
                           CONFIG_TINYUSB_MAX_POWER_USAGE),
 #if CONFIG_TINYUSB_CDC_ENABLED
-    // Interface number, string index, EP notification address and size, EP data address (out, in) and size.
-    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, USB_DESC_CDC, ENDPOINT_NOTIF,
-                       8, ENDPOINT_CDC, 0x80 | ENDPOINT_CDC, 64),
+    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, USB_DESC_CDC, ENDPOINT_NOTIF, 8,
+                       ENDPOINT_CDC_OUT, ENDPOINT_CDC_IN,
+                       CONFIG_TINYUSB_CDC_FIFO_SIZE),
 #endif
 #if CONFIG_TINYUSB_MSC_ENABLED
-    // Interface number, string index, EP Out & EP In address, EP size
-    TUD_MSC_DESCRIPTOR(ITF_NUM_MSC, USB_DESC_MSC, ENDPOINT_MSC,
-                       0x80 | ENDPOINT_MSC, 64), // highspeed 512
+    TUD_MSC_DESCRIPTOR(ITF_NUM_MSC, USB_DESC_MSC, ENDPOINT_MSC_OUT,
+                       ENDPOINT_MSC_IN, CONFIG_TINYUSB_MSC_FIFO_SIZE),
 #endif
 #if CONFIG_TINYUSB_HID_ENABLED
-    // Interface number, string index, protocol, report descriptor len, EP In address, size & polling interval
     TUD_HID_DESCRIPTOR(ITF_NUM_HID, USB_DESC_HID, HID_PROTOCOL_NONE,
-                       sizeof(desc_hid_report), 0x84, 16, 10),
+                       sizeof(desc_hid_report), ENDPOINT_HID_IN,
+                       CONFIG_TINYUSB_HID_BUFSIZE, 10),
 #endif
 #if CONFIG_TINYUSB_VENDOR_ENABLED
-    // Interface number, string index, EP Out & IN address, EP size
-    TUD_VENDOR_DESCRIPTOR(ITF_NUM_VENDOR, USB_DESC_VENDOR, ENDPOINT_VENDOR,
-                          0x80 | ENDPOINT_VENDOR, 64),
+    TUD_VENDOR_DESCRIPTOR(ITF_NUM_VENDOR, USB_DESC_VENDOR, ENDPOINT_VENDOR_OUT,
+                          ENDPOINT_VENDOR_IN, CONFIG_TINYUSB_VENDOR_FIFO_SIZE),
 #endif
 #if CONFIG_TINYUSB_MIDI_ENABLED
-    // Interface number, string index, EP Out & EP In address, EP size
-    TUD_MIDI_DESCRIPTOR(ITF_NUM_MIDI, USB_DESC_MIDI, ENDPOINT_MIDI,
-                        0x80 | ENDPOINT_MIDI,
-                        (CFG_TUSB_RHPORT0_MODE & OPT_MODE_HIGH_SPEED) ? 512 : 64),
+    TUD_MIDI_DESCRIPTOR(ITF_NUM_MIDI, USB_DESC_MIDI, ENDPOINT_MIDI_OUT,
+                        ENDPOINT_MIDI_IN, CONFIG_TINYUSB_MIDI_FIFO_SIZE),
 #endif
 };
 
+/// USB device descriptor strings.
+///
+/// NOTE: Only ASCII characters are supported at this time.
 static std::string s_str_descriptor[USB_DESC_MAX_COUNT] =
 {
-    "", // NOT USED - SPECIAL CASED IN tud_descriptor_string_cb
+    "", // UNUSED - placeholder for 
     "", // USB_DESC_MANUFACTURER
     "", // USB_DESC_PRODUCT
     "", // USB_DESC_SERIAL_NUMBER
@@ -186,7 +313,15 @@ static std::string s_str_descriptor[USB_DESC_MAX_COUNT] =
     "", // USB_DESC_VENDOR
     ""  // USB_DESC_MIDI
 };
-static uint16_t _desc_str[32];
+
+/// Maximum length of the USB device descriptor strings.
+static constexpr size_t MAX_DESCRIPTOR_LEN = 126;
+
+/// Temporary holding buffer for USB device descriptor string data in UTF-16
+/// format.
+///
+/// NOTE: Only ASCII characters are supported at this time.
+static uint16_t _desc_str[MAX_DESCRIPTOR_LEN + 1];
 
 // =============================================================================
 // Device descriptor functions
@@ -207,11 +342,12 @@ void configure_usb_descriptor_str(esp_usb_descriptor_index_t index,
                                   const char *value)
 {
     s_str_descriptor[index].assign(value);
-    if (s_str_descriptor[index].length() > 31)
+    // truncate the descriptor string (if needed).
+    if (s_str_descriptor[index].length() > MAX_DESCRIPTOR_LEN)
     {
-        s_str_descriptor[index].resize(31);
+        s_str_descriptor[index].resize(MAX_DESCRIPTOR_LEN);
     }
-    ESP_LOGV(TAG, "USB-DESC(%d) %s\n", index, value);
+    ESP_LOGI(TAG, "Setting USB descriptor %d text to: %s", index, value);
 }
 
 // =============================================================================
@@ -253,16 +389,8 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
     }
     else
     {
-        chr_count = s_str_descriptor[index].length();
-
-        // Ensure the string will fit into the target buffer
-        if (chr_count > (TU_ARRAY_SIZE(_desc_str) - 1))
-        {
-            chr_count = TU_ARRAY_SIZE(_desc_str) - 1;
-        }
-
-        // Convert the ASCII string into UTF-16
-        for(size_t idx = 0; idx < chr_count; idx++)
+        // Convert the ASCII string into UTF-16.
+        for(size_t idx = 0; idx < s_str_descriptor[index].length(); idx++)
         {
             _desc_str[idx + 1] = s_str_descriptor[index].at(idx);
         }

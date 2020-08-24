@@ -1,4 +1,4 @@
-// Copyright 2020 Espressif Systems (Shanghai) PTE LTD
+// Copyright 2020 Espressif Systems (Shanghai) Co. Ltd.
 // Copyright 2020 Mike Dunston (https://github.com/atanisoft)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -52,29 +52,6 @@ typedef enum
     USB_DESC_MAX_COUNT
 } esp_usb_descriptor_index_t;
 
-/// USB Device Endpoint assignments.
-///
-/// NOTE: Most device drivers use two endpoints with the second endpoint being
-/// the same as below but ORed with 0x80. The CDC device driver also uses the
-/// @ref ENDPOINT_NOTIF.
-typedef enum
-{
-    /// CDC endpoint.
-    ENDPOINT_CDC = 0x02,
-
-    /// Mass Storage endpoint.
-    ENDPOINT_MSC = 0x03,
-
-    /// MIDI endpoint.
-    ENDPOINT_MIDI = 0x05,
-
-    /// Vendor endpoint.
-    ENDPOINT_VENDOR = 0x06,
-
-    /// Notification endpoint.
-    ENDPOINT_NOTIF = 0x81,
-} esp_usb_endpoint_t;
-
 #if CONFIG_TINYUSB_HID_ENABLED
 /// USB HID device report types.
 typedef enum
@@ -89,25 +66,35 @@ typedef enum
 
 typedef enum
 {
-#if CONFIG_TINYUSB_CDC_ENABLED
-    ITF_NUM_CDC = 0,
-    ITF_NUM_CDC_DATA,
-#endif
-#if CONFIG_TINYUSB_MSC_ENABLED
-    ITF_NUM_MSC,
-#endif
-#if CONFIG_TINYUSB_HID_ENABLED
-    ITF_NUM_HID,
-#endif
-#if CONFIG_TINYUSB_MIDI_ENABLED
-    ITF_NUM_MIDI,
-    ITF_NUM_MIDI_STREAMING,
-#endif
-#if CONFIG_TINYUSB_VENDOR_ENABLED 
-    ITF_NUM_VENDOR,
-#endif
-    ITF_NUM_TOTAL
-} esp_usb_interface_t;
+    /// No device is connected.
+    LINE_STATE_DISCONNECTED,
+
+    /// A device is connected.
+    LINE_STATE_CONNECTED,
+
+    /// This state is reached by deasserting DTR and RTS asserted and is the
+    /// first step used by esptool.py to enter download mode.
+    LINE_STATE_MAYBE_ENTER_DOWNLOAD_DTR,
+
+    /// This state is reached by asserting both DTR and RTS. This normally will
+    /// happen when a device is connected to the USB port. It is also the
+    /// second state used by esptool.py to enter download mode.
+    LINE_STATE_MAYBE_CONNECTED,
+
+    /// This state is reached by asserting DTR and deasserting RTS. This is the
+    /// third step used by esptool.py to enter download mode.
+    LINE_STATE_MAYBE_ENTER_DOWNLOAD_RTS,
+
+    /// This state is used by the usb shutdown hook to trigger a restart into
+    /// esptool binary download mode.
+    ///
+    /// NOTE: This is not the same as DFU download mode.
+    LINE_STATE_REQUEST_DOWNLOAD,
+
+    /// This state is used by the usb shutdown hook to trigger a restart into
+    /// DFU download mode.
+    LINE_STATE_REQUEST_DOWNLOAD_DFU
+} esp_line_state_t;
 
 /// Initializes the USB peripheral and prepares the default descriptors.
 ///
@@ -119,6 +106,14 @@ void init_usb_subsystem(bool external_phy = false);
 /// NOTE: The task uses 4096 bytes for the stack and runs at the TCP/IP task
 /// priority.
 void start_usb_task();
+
+/// Writes a buffer to the USB CDC if there is a device connected.
+///
+/// @param buf is the buffer to send.
+/// @param size is the size of the buffer.
+///
+/// @return the number of bytes transmitted.
+size_t write_to_cdc(const char *buf, size_t size);
 
 /// Configures the USB descriptor.
 ///
@@ -135,10 +130,34 @@ void configure_usb_descriptor(tusb_desc_device_t *desc,
 /// configured.
 /// @param value is the value to assign to the descriptor string.
 ///
-/// NOTE: USB descriptor strings are limited to a maximum of 31 ASCII
-/// characters.
+/// NOTE: USB descriptor strings only support ASCII characters at this time and
+/// have a maximum length of 126 characters.
 void configure_usb_descriptor_str(esp_usb_descriptor_index_t index,
                                   const char *value);
+
+/// Requests that the next time the system restarts it should be started in DFU
+/// mode.
+///
+/// NOTE: If a USB device connects or disconnects after this call has been made
+/// and the system has not restarted this request will be discarded.
+void request_dfu_mode();
+
+/// Callback for CDC line state change for application code.
+///
+/// @param status is the new @ref esp_line_state_t state.
+/// @param download_mode_requested will be set to true if there has been a
+/// request to restart the system into download mode (esptool or DFU).
+///
+/// @return The callback function should return true if the USB code should
+/// make the call to @ref esp_restart() internally. If the application needs
+/// to prepare for restart it should return false and schedule the restart as
+/// soon as possible after this function returns.
+///
+/// NOTE: The return value from this callback function is only used when there
+/// has been a request to restart into download mode and
+/// download_mode_requested is true.
+bool usb_line_state_changed_cb(esp_line_state_t status,
+                               bool download_mode_requested);
 
 /// Configures a 4MB virtual disk.
 ///
@@ -156,11 +175,15 @@ void configure_virtual_disk(std::string label, uint32_t serial_number);
 /// @param content is the raw byte content for the file.
 /// @param size is the number of bytes in the file.
 ///
+/// @return ESP_OK if the file was successfully added to the virtual disk or
+/// ESP_ERR_INVALID_STATE if there are too many files on the virtual disk.
+///
 /// NOTE: filename is limited to 8.3 format and will be truncated if
 /// necessary. If the filename provided does not have a "." character then it
 /// will be used as-is up to 11 ASCII characters.
-void add_readonly_file_to_virtual_disk(const std::string filename,
-                                       const char *content, uint32_t size);
+esp_err_t add_readonly_file_to_virtual_disk(const std::string filename,
+                                            const char *content,
+                                            uint32_t size);
 
 /// Exposes a partition as a file on the virtual disk.
 ///
@@ -168,19 +191,29 @@ void add_readonly_file_to_virtual_disk(const std::string filename,
 /// @param filename is the name of the file on the virtual disk.
 /// @param writable controls if the file can be written to over USB.
 ///
+/// @return ESP_OK if the file was successfully added to the virtual disk or
+/// ESP_ERR_INVALID_STATE if there are too many files on the virtual disk or
+/// ESP_ERR_NOT_FOUND if the partition could not be found.
+///
 /// NOTE: filename is limited to 8.3 format and will be truncated if
 /// necessary. If the filename provided does not have a "." character then it
 /// will be used as-is up to 11 ASCII characters.
-void add_partition_to_virtual_disk(const std::string partition_name,
-                                   const std::string filename,
-                                   bool writable = false);
+esp_err_t add_partition_to_virtual_disk(const std::string partition_name,
+                                        const std::string filename,
+                                        bool writable = false);
 
 /// Adds the currently running firmware and the next available OTA slot as the
 /// previous firmware.
 ///
 /// @param current_name is used as the filename for the currently running
-/// firmware.
-/// @param previous_name is used as the filename for the previous firmware.
+/// firmware, note that this parameter is optional and when omitted the
+/// filename will be "firmware.bin".
+/// @param previous_name is used as the filename for the previous firmware,
+/// note that this parameter is optional and when omitted only the currently
+/// running firmware will be present on the virtual disk.
+///
+/// @return ESP_OK if the file was successfully added to the virtual disk or
+/// ESP_ERR_INVALID_STATE if there are too many files on the virtual disk.
 ///
 /// NOTE: Both current_name and previous_name are limited to 8.3 format and
 /// will be truncated if necessary. If the filename does not have a "."
@@ -189,4 +222,5 @@ void add_partition_to_virtual_disk(const std::string partition_name,
 /// NOTE: This API expects only ota_0 and ota_1 to be defined in the partition
 /// map. A future revision may adjust this to support more than two OTA
 /// partitions.
-void add_firmware_to_virtual_disk(const std::string current_name, const std::string previous_name);
+esp_err_t add_firmware_to_virtual_disk(const std::string current_name = "firmware.bin",
+                                       const std::string previous_name = "");

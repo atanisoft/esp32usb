@@ -22,20 +22,6 @@ menu "TinyUSB (esp32s2usb)"
         help
             Enable USB Serial (CDC) TinyUSB driver.
 
-    config TINYUSB_CDC_RX_BUFSIZE
-        int "CDC FIFO size of RX"
-        default 64
-        depends on TINYUSB_CDC_ENABLED
-        help
-            CDC FIFO size of RX
-
-    config TINYUSB_CDC_TX_BUFSIZE
-        int "CDC FIFO size of TX"
-        default 64
-        depends on TINYUSB_CDC_ENABLED
-        help
-            CDC FIFO size of TX
-
     config TINYUSB_MSC_ENABLED
         bool "Enable Mass Storage (MSC) TinyUSB driver"
         default n
@@ -43,13 +29,6 @@ menu "TinyUSB (esp32s2usb)"
         help
             Enable MSC TinyUSB driver. It is recomended to use Menuconfig-driven descriptor (.descriptor = NULL and
             .string_descriptor = NULL in the tinyusb_config_t structure).
-
-    config TINYUSB_MSC_BUFSIZE
-        int "MSC Buffer size of Device Mass storage"
-        default 512
-        depends on TINYUSB_MSC_ENABLED
-        help
-            MSC Buffer size of Device Mass storage
 
     config TINYUSB_HID_ENABLED
         bool "Enable HID TinyUSB driver"
@@ -59,13 +38,6 @@ menu "TinyUSB (esp32s2usb)"
             Enable HID TinyUSB driver. It is recomended to use Menuconfig-driven descriptor (.descriptor = NULL and
             .string_descriptor = NULL in the tinyusb_config_t structure).
 
-    config TINYUSB_HID_BUFSIZE
-        int "HID buffer size Should be sufficient to hold ID (if any) + Data"
-        default 16
-        depends on TINYUSB_HID_ENABLED
-        help
-            HID buffer size Should be sufficient to hold ID (if any) + Data
-
     config TINYUSB_MIDI_ENABLED
         bool "Enable MIDI TinyUSB driver"
         default n
@@ -74,20 +46,6 @@ menu "TinyUSB (esp32s2usb)"
             Enable MIDI TinyUSB driver. It is recomended to use Menuconfig-driven descriptor (.descriptor = NULL
             and .string_descriptor = NULL in the tinyusb_config_t structure).
 
-    config TINYUSB_MIDI_RX_BUFSIZE
-        int "MIDI FIFO size of RX"
-        default 64
-        depends on TINYUSB_MIDI_ENABLED
-        help
-            MIDI FIFO size of RX
-
-    config TINYUSB_MIDI_TX_BUFSIZE
-        int "MIDI FIFO size of TX"
-        default 64
-        depends on TINYUSB_MIDI_ENABLED
-        help
-            MIDI FIFO size of TX
-
     config TINYUSB_VENDOR_ENABLED
         bool "Vendor class TinyUSB driver"
         default n
@@ -95,27 +53,12 @@ menu "TinyUSB (esp32s2usb)"
         help
             Enable USB vendor TinyUSB driver. Currently used by webusb driver.
 
-    config TINYUSB_VENDOR_RX_BUFSIZE
-        int "Vendor FIFO size of RX"
-        default 64
-        depends on TINYUSB_VENDOR_ENABLED
-        help
-            Vendor FIFO size of RX
-
-    config TINYUSB_VENDOR_TX_BUFSIZE
-        int "Vendor FIFO size of TX"
-        default 64
-        depends on TINYUSB_VENDOR_ENABLED
-        help
-            Vendor FIFO size of TX
-
     config TINYUSB_CUSTOM_CLASS_ENABLED
         bool "Enable a custom TinyUSB class"
         default n
         depends on TINYUSB_ENABLED
         help
-            Enable a custom TinyUSB class. It is recomended to use Menuconfig-driven descriptor (.descriptor = NULL
-            and .string_descriptor = NULL in the tinyusb_config_t structure).
+            Enable a custom TinyUSB class.
 
     config TINYUSB_DEBUG
         bool "Debug mode"
@@ -124,35 +67,165 @@ menu "TinyUSB (esp32s2usb)"
         help
             Debug mode
 
-    menu "Descriptor configuration"
-        config TINYUSB_USB_VENDOR_ID
-            hex "USB Descriptor Vendor ID"
-            default 0x303A
-            depends on TINYUSB_ENABLED
-            help
-                This is used in the USB Descriptor for the device. The default value of 0x303A is the Espressif ID.
+    menu "USB Serial (CDC) Configuration"
+        depends on TINYUSB_CDC_ENABLED
 
-        config TINYUSB_DESC_BCDDEVICE
-            hex "USB Descriptor BCD Device"
-            default 0x0100
-            depends on TINYUSB_ENABLED
+        config TINYUSB_CDC_RX_BUFSIZE
+            int "RX buffer size"
+            range 64 2048
+            default 128
             help
-                Version of the firmware of the USB device
+                CDC receive buffer size.
+
+        config TINYUSB_CDC_TX_BUFSIZE
+            int "TX buffer size"
+            range 64 2048
+            default 256
+            help
+                CDC transmit buffer size.
+
+        config TINYUSB_CDC_FIFO_SIZE
+            int
+            default 64
+
+        config TINYUSB_CDC_WRITE_FLUSH_TIMEOUT
+            int "Write timeout (milliseconds)"
+            default 10
+    endmenu
+
+    menu "Mass Stoarage (MSC) Configuration"
+        depends on TINYUSB_MSC_ENABLED
+
+        config TINYUSB_MSC_BUFSIZE
+            int
+            default 512
+
+        config TINYUSB_MSC_FIFO_SIZE
+            int
+            default 64
 
         config TINYUSB_MSC_VENDOR_ID
             string "MSC Vendor ID"
-            default "TinyUSB"
-            depends on TINYUSB_MSC_ENABLED
+            default "ESP32-S2"
 
         config TINYUSB_MSC_PRODUCT_ID
             string "MSC Product ID"
-            default "TinyUSB Disk"
-            depends on TINYUSB_MSC_ENABLED
+            default "ESP32-S2 Disk"
 
         config TINYUSB_MSC_PRODUCT_REVISION
             string "MSC Product revision"
             default "1.00"
-            depends on TINYUSB_MSC_ENABLED
+
+        config TINYUSB_MSC_VDISK_SECTOR_SIZE
+            int
+            default 512
+
+        config TINYUSB_MSC_VDISK_SECTOR_COUNT
+            int
+            default 8192
+
+        config TINYUSB_MSC_VDISK_RESERVED_SECTOR_COUNT
+            int
+            default 1
+
+        config TINYUSB_MSC_VDISK_FILE_COUNT
+            int "Max number of files"
+            default 64
+            range 16 128
+            help
+                Maximum number of files to present on the virtual disk. This is
+                used to calculate how many sectors to reserve for file entries.
+                Each sector can hold up to 16 files, the first sector has one
+                reserved file entry for the disk label.
+    endmenu
+
+    menu "Vendor Configuration"
+        depends on TINYUSB_VENDOR_ENABLED
+        config TINYUSB_VENDOR_RX_BUFSIZE
+            int "RX buffer size"
+            range 64 2048
+            default 64
+            help
+                Vendor receive buffer size in bytes.
+
+        config TINYUSB_VENDOR_TX_BUFSIZE
+            int "TX buffer size"
+            range 64 2048
+            default 64
+            help
+                Vendor transmit buffer size in bytes.
+
+        config TINYUSB_VENDOR_FIFO_SIZE
+            int
+            default 64
+    endmenu
+
+    menu "MIDI Configuration"
+        depends on TINYUSB_MIDI_ENABLED
+
+        config TINYUSB_MIDI_RX_BUFSIZE
+            int "RX buffer size"
+            range 64 2048
+            default 128
+            help
+                MIDI receive buffer size in bytes.
+
+        config TINYUSB_MIDI_TX_BUFSIZE
+            int "TX buffer size"
+            range 64 2048
+            default 128
+            help
+                MIDI transmit buffer size in bytes.
+        
+        config TINYUSB_MIDI_FIFO_SIZE
+            int
+            default 64
+    endmenu
+
+    menu "HID Configuration"
+        depends on TINYUSB_HID_ENABLED
+
+        config TINYUSB_HID_BUFSIZE
+            int "Buffer size"
+            default 16
+            help
+                HID buffer size should be sufficient to hold ID (if any) + Data
+    endmenu
+
+    menu "USB descriptor configuration"
+        depends on TINYUSB_ENABLED
+        config TINYUSB_USB_VENDOR_ID
+            hex "USB Descriptor Vendor ID"
+            default 0x303A
+            help
+                This is used in the USB Descriptor for the device. The default
+                value of 0x303A is the Espressif Vendor ID.
+
+        config TINYUSB_DESC_BCDDEVICE
+            hex "USB Descriptor BCD Device"
+            default 0x0100
+            help
+                Version of the firmware of the USB device
+    endmenu
+
+    menu "Task configuration"
+        depends on TINYUSB_MSC_ENABLED
+
+        config TINYUSB_TASK_NAME
+            string "Name"
+            default "esp-usb"
+
+        config TINYUSB_TASK_STACK_SIZE
+            int "Stack size (bytes)"
+            default 4096
+
+        config TINYUSB_TASK_PRIORITY
+            int "Priority"
+            range 2 25
+            default 5
+            help
+                This is the priority for the TinyUSB executor task. It must be
+                at least one priority level higher than the app_main task.
     endmenu
 
 endmenu
