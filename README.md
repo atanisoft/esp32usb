@@ -1,6 +1,7 @@
 # What is esp32s2usb?
 
-esp32s2usb is an ESP-IDF component that provides a replacement for the ESP-IDF TinyUSB component. This code tracks https://github.com/hathach/tinyusb latest code rather than https://github.com/espressif/tinyusb.
+esp32s2usb is an ESP-IDF component that provides an alternative for the ESP-IDF TinyUSB component.
+This code uses https://github.com/hathach/tinyusb rather than https://github.com/espressif/tinyusb.
 
 # How to use?
 In your project, add this as a submodule to your `components/` directory.
@@ -43,10 +44,12 @@ void app_main() {
   configure_usb_descriptor_str(USB_DESC_SERIAL_NUMBER, "1234567890");
   configure_virtual_disk("esp32s2usb", 0x0100);
   add_readonly_file_to_virtual_disk("readme.txt", readme_txt, strlen(readme_txt));
+  add_partition_to_virtual_disk("spiffs", "spiffs.bin");
+  add_firmware_to_virtual_disk();
   start_usb_task();
 ```
 
 ### Virtual Disk limitations
 
-1. The virtual disk support is currently limited to around 2MiB in size but may be configurable in the future. 
-2. The currently running firmware is not exposed via the virtual disk interface but will be optionally exposed via a method call in the future.
+1. The virtual disk support is currently limited to around 4MiB in size but may be configurable in the future. 
+2. Adding the firmware to the virtual disk is currently limited to showing only two OTA partitions (current and previous/next). If more than two OTA partitions are in use it is recommended to use `add_partition_to_virtual_disk` instead of `add_firmware_to_virtual_disk` so more images can be displayed.
