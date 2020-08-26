@@ -303,15 +303,15 @@ uint8_t const desc_configuration[USB_DESCRIPTORS_CONFIG_TOTAL_LEN] =
 /// NOTE: Only ASCII characters are supported at this time.
 static std::string s_str_descriptor[USB_DESC_MAX_COUNT] =
 {
-    "", // UNUSED - placeholder for 
-    "", // USB_DESC_MANUFACTURER
-    "", // USB_DESC_PRODUCT
-    "", // USB_DESC_SERIAL_NUMBER
-    "", // USB_DESC_CDC
-    "", // USB_DESC_MSC
-    "", // USB_DESC_HID
-    "", // USB_DESC_VENDOR
-    ""  // USB_DESC_MIDI
+    "",     // LANGUAGE (unused in tud_descriptor_string_cb)
+    "",     // USB_DESC_MANUFACTURER
+    "",     // USB_DESC_PRODUCT
+    "",     // USB_DESC_SERIAL_NUMBER
+    "",     // USB_DESC_CDC
+    "",     // USB_DESC_MSC
+    "",     // USB_DESC_HID
+    "",     // USB_DESC_VENDOR
+    ""      // USB_DESC_MIDI
 };
 
 /// Maximum length of the USB device descriptor strings.
@@ -341,12 +341,8 @@ void configure_usb_descriptor(tusb_desc_device_t *desc, uint16_t version)
 void configure_usb_descriptor_str(esp_usb_descriptor_index_t index,
                                   const char *value)
 {
-    s_str_descriptor[index].assign(value);
     // truncate the descriptor string (if needed).
-    if (s_str_descriptor[index].length() > MAX_DESCRIPTOR_LEN)
-    {
-        s_str_descriptor[index].resize(MAX_DESCRIPTOR_LEN);
-    }
+    s_str_descriptor[index].assign(value, MAX_DESCRIPTOR_LEN);
     ESP_LOGI(TAG, "Setting USB descriptor %d text to: %s", index, value);
 }
 
@@ -374,11 +370,12 @@ uint8_t const *tud_descriptor_configuration_cb(uint8_t index)
 uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
 {
     uint8_t chr_count;
+    // clear the last descriptor
+    bzero(_desc_str, TU_ARRAY_SIZE(_desc_str));
 
     if (index == 0)
     {
-        _desc_str[1] = 0x09;
-        _desc_str[2] = 0x04;
+        _desc_str[1] = tu_htole16(0x0409);
         chr_count = 1;
     }
     else if (index >= USB_DESC_MAX_COUNT)
@@ -389,15 +386,18 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
     }
     else
     {
-        // Convert the ASCII string into UTF-16.
-        for(size_t idx = 0; idx < s_str_descriptor[index].length(); idx++)
+        // TODO: evaluate if std::copy can be used here instead.
+        // copy the string into the temporary array starting at offset 1
+        size_t idx = 1;
+        for (char ch : s_str_descriptor[index])
         {
-            _desc_str[idx + 1] = s_str_descriptor[index].at(idx);
+            _desc_str[idx++] = tu_htole16(ch);
         }
+        chr_count = s_str_descriptor[index].length();
     }
 
-    // first byte is len, second byte is string type
-    _desc_str[0] = (TUSB_DESC_STRING << 8) | ((chr_count << 1) + 2);
+    // length and type
+    _desc_str[0] = tu_htole16((TUSB_DESC_STRING << 8) | (2 * chr_count + 2));
 
     return _desc_str;
 }
