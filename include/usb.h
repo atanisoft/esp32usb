@@ -48,6 +48,9 @@ typedef enum
     /// This is used for the USB MIDI Device Description string.
     USB_DESC_MIDI,
 
+    /// This is used for the USB DFU RT Device Description string.
+    USB_DESC_DFU,
+
     /// This is used internally and will be ignored by callers if used.
     USB_DESC_MAX_COUNT
 } esp_usb_descriptor_index_t;

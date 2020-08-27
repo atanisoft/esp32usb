@@ -47,11 +47,18 @@ menu "TinyUSB (esp32s2usb)"
             and .string_descriptor = NULL in the tinyusb_config_t structure).
 
     config TINYUSB_VENDOR_ENABLED
-        bool "Vendor class TinyUSB driver"
+        bool "Enable Vendor class TinyUSB driver"
         default n
         depends on TINYUSB_ENABLED
         help
             Enable USB vendor TinyUSB driver. Currently used by webusb driver.
+
+    config TINYUSB_DFU_ENABLED
+        bool "Enable DFU Runtime"
+        default n
+        depends on TINYUSB_ENABLED
+        help
+            Enable the DFU_RT TinyUSB driver.
 
     config TINYUSB_CUSTOM_CLASS_ENABLED
         bool "Enable a custom TinyUSB class"
@@ -204,6 +211,21 @@ menu "TinyUSB (esp32s2usb)"
             default 16
             help
                 HID buffer size should be sufficient to hold ID (if any) + Data
+    endmenu
+
+    menu "DFU Runtime Configuration"
+        depends on TINYUSB_DFU_ENABLED
+        config TINYUSB_DFU_DISCONNECT_DELAY
+            int
+            default 1000
+
+        config TINYUSB_DFU_BUFSIZE
+            int "Buffer size"
+            range 512 4096
+            default 1024
+            help
+                The DFU buffer size is used for splitting the DFU payload into
+                smaller pieces which may be more managable.
     endmenu
 
     menu "USB descriptor configuration"

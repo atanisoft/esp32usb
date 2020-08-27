@@ -76,6 +76,10 @@ extern "C"
 #define CONFIG_TINYUSB_VENDOR_ENABLED 0
 #endif
 
+#ifndef CONFIG_TINYUSB_DFU_ENABLED
+#define CONFIG_TINYUSB_DFU_ENABLED 0
+#endif
+
 #ifndef CONFIG_TINYUSB_CUSTOM_CLASS_ENABLED
 #define CONFIG_TINYUSB_CUSTOM_CLASS_ENABLED 0
 #endif
@@ -112,6 +116,10 @@ extern "C"
 #define CONFIG_TINYUSB_MIDI_TX_BUFSIZE 64
 #endif
 
+#ifndef CONFIG_TINYUSB_DFU_BUFSIZE
+#define CONFIG_TINYUSB_DFU_BUFSIZE 1024
+#endif
+
 //--------------------------------------------------------------------
 // DEVICE CONFIGURATION
 //--------------------------------------------------------------------
@@ -121,6 +129,7 @@ extern "C"
 #define CFG_TUD_MIDI CONFIG_TINYUSB_MIDI_ENABLED
 #define CFG_TUD_VENDOR CONFIG_TINYUSB_VENDOR_ENABLED
 #define CFG_TUD_CUSTOM_CLASS CONFIG_TINYUSB_CUSTOM_CLASS_ENABLED
+#define CFG_TUD_DFU_RT CONFIG_TINYUSB_DFU_ENABLED
 
 //--------------------------------------------------------------------
 // CDC FIFO CONFIGURATION

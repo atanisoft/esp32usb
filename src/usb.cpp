@@ -165,7 +165,7 @@ static tusb_desc_device_t s_descriptor =
     .idVendor           = CONFIG_TINYUSB_USB_VENDOR_ID,
     .idProduct          = (0x4000 | _PID_MAP(CDC, 0) | _PID_MAP(MSC, 1) |
                            _PID_MAP(HID, 2) | _PID_MAP(MIDI, 3) |
-                           _PID_MAP(VENDOR, 4)),
+                           _PID_MAP(VENDOR, 4) | _PID_MAP(DFU_RT, 5)),
     .bcdDevice          = CONFIG_TINYUSB_DESC_BCDDEVICE,
     .iManufacturer      = USB_DESC_MANUFACTURER,
     .iProduct           = USB_DESC_PRODUCT,
@@ -240,6 +240,9 @@ typedef enum
 #if CONFIG_TINYUSB_VENDOR_ENABLED 
     ITF_NUM_VENDOR,
 #endif
+#if CONFIG_TINYUSB_DFU_ENABLED 
+    ITF_NUM_DFU_RT,
+#endif
     ITF_NUM_TOTAL
 } esp_usb_interface_t;
 
@@ -250,7 +253,8 @@ static constexpr uint16_t USB_DESCRIPTORS_CONFIG_TOTAL_LEN =
     (CONFIG_TINYUSB_MSC_ENABLED * TUD_MSC_DESC_LEN) +
     (CONFIG_TINYUSB_HID_ENABLED * TUD_HID_DESC_LEN) +
     (CONFIG_TINYUSB_VENDOR_ENABLED * TUD_VENDOR_DESC_LEN) +
-    (CONFIG_TINYUSB_MIDI_ENABLED * TUD_MIDI_DESC_LEN);
+    (CONFIG_TINYUSB_MIDI_ENABLED * TUD_MIDI_DESC_LEN) +
+    (CONFIG_TINYUSB_DFU_ENABLED * TUD_DFU_RT_DESC_LEN);
 
 #if CONFIG_TINYUSB_CDC_ENABLED
 static_assert(CONFIG_TINYUSB_CDC_FIFO_SIZE == 64, "CDC FIFO size must be 64");
@@ -296,6 +300,11 @@ uint8_t const desc_configuration[USB_DESCRIPTORS_CONFIG_TOTAL_LEN] =
     TUD_MIDI_DESCRIPTOR(ITF_NUM_MIDI, USB_DESC_MIDI, ENDPOINT_MIDI_OUT,
                         ENDPOINT_MIDI_IN, CONFIG_TINYUSB_MIDI_FIFO_SIZE),
 #endif
+#if CONFIG_TINYUSB_DFU_ENABLED
+    TUD_DFU_RT_DESCRIPTOR(ITF_NUM_DFU_RT, USB_DESC_DFU, 0x0d,
+                          CONFIG_TINYUSB_DFU_DISCONNECT_DELAY,
+                          CONFIG_TINYUSB_DFU_BUFSIZE),
+#endif
 };
 
 /// USB device descriptor strings.
@@ -311,7 +320,8 @@ static std::string s_str_descriptor[USB_DESC_MAX_COUNT] =
     "",     // USB_DESC_MSC
     "",     // USB_DESC_HID
     "",     // USB_DESC_VENDOR
-    ""      // USB_DESC_MIDI
+    "",     // USB_DESC_MIDI
+    "",     // USB_DESC_DFU
 };
 
 /// Maximum length of the USB device descriptor strings.
@@ -418,5 +428,15 @@ uint8_t const *tud_hid_descriptor_report_cb(void)
 }
 
 #endif // CONFIG_USB_HID_ENABLED
+
+
+#if CONFIG_USB_DFU_ENABLED
+// Invoked when the DFU Runtime mode is requested
+void tud_dfu_rt_reboot_to_dfu(void)
+{
+    REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
+    SET_PERI_REG_MASK(RTC_CNTL_OPTIONS0_REG, RTC_CNTL_SW_PROCPU_RST);
+}
+#endif // CONFIG_USB_DFU_ENABLED
 
 } // extern "C"
