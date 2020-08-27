@@ -33,7 +33,7 @@
 
 static constexpr const char * const TAG = "USB:MSC";
 
-enum PARTITION_TYPE_T : uint8_t
+typedef enum : uint8_t
 {
     PART_EMPTY = 0x00,
     PART_FAT_12 = 0x01,
@@ -42,107 +42,87 @@ enum PARTITION_TYPE_T : uint8_t
     PART_FAT_32_LBA = 0x0C,
     PART_FAT_16B_LBA = 0x0E,
     PART_EXTENDED = 0x0F,
-};
+} PARTITION_TYPE;
 
-enum PARTITION_STATUS : uint8_t
+typedef enum : uint8_t
 {
     PART_STATUS_UNUSED = 0x00,
     PART_STATUS_ACTIVE = 0x80,
     PART_STATUS_BOOTABLE = 0x80
-};
+} PARTITION_STATUS;
 
-typedef struct TU_ATTR_PACKED
-{
-    PARTITION_STATUS  status;               //  1 status of the disk:
-                                            //    0x00 = inactive
-                                            //    0x01-0x7f = invalid
-                                            //    0x80 = bootable
-    uint8_t first_head;                     //  2 
-    uint8_t first_sector;                   //  3 this field is split between sector and cylinder:
-                                            //    bits 0-5 (0x3F) are for sector
-                                            //    bits 6,7 are cylinder bits 8,9
-    uint8_t first_cylinder;                 //  4
-    PARTITION_TYPE_T partition_type;        //  6
-    uint8_t last_head;                      //  7
-    uint8_t last_sector;                    //  8 this field is split between sector and cylinder:
-                                            //    bits 0-5 (0x3F) are for sector
-                                            //    bits 6,7 are cylinder bits 8,9
-    uint8_t last_cylinder;                  //  9
-    uint32_t first_lba;                     // 12
-    uint32_t sector_count;                  // 16
+typedef struct TU_ATTR_PACKED               //  start
+{                                           // offset notes
+    PARTITION_STATUS  status;               //   0x00 status of the disk:
+                                            //        0x00 = inactive
+                                            //        0x01-0x7f = invalid
+                                            //        0x80 = bootable
+    uint8_t first_head;                     //   0x01
+    uint8_t first_sector;                   //   0x02 this field is split between sector and cylinder:
+                                            //        bits 0-5 (0x3F) are for sector
+                                            //        bits 6,7 are cylinder bits 8,9
+    uint8_t first_cylinder;                 //   0x03
+    PARTITION_TYPE partition_type;          //   0x04
+    uint8_t last_head;                      //   0x05
+    uint8_t last_sector;                    //   0x06 this field is split between sector and cylinder:
+                                            //        bits 0-5 (0x3F) are for sector
+                                            //        bits 6,7 are cylinder bits 8,9
+    uint8_t last_cylinder;                  //   0x07
+    uint32_t first_lba;                     //   0x08
+    uint32_t sector_count;                  //   0x0C
 } partition_def_t;
 
 static_assert(sizeof(partition_def_t) == 16,
               "partition_def_t should be 16 bytes");
 
-typedef struct TU_ATTR_PACKED
-{
-    uint8_t bootstrap[218];                 // 218 -- unused today.
-    uint16_t disk_timestamp;                // 220
-    uint8_t original_drive_id;              // 221
-    uint8_t disk_seconds;                   // 222
-    uint8_t disk_minutes;                   // 223
-    uint8_t disk_hours;                     // 224
-    uint8_t boostrap2[216];                 // 440 NOTE: this may spill over into next two fields.
-    uint32_t disk_signature;                // 444
-    uint16_t copy_protected;                // 446
-    partition_def_t partitions[4];          // 510
-    uint8_t boot_signature[2];              // 512 -- boot sector signature
+typedef struct TU_ATTR_PACKED               //  start
+{                                           // offset notes
+    uint8_t bootstrap[218];                 //  0x000 bootstrap code.
+    uint16_t disk_timestamp;                //  0x0DA
+    uint8_t original_drive_id;              //  0x0DC
+    uint8_t disk_seconds;                   //  0x0DD
+    uint8_t disk_minutes;                   //  0x0DE
+    uint8_t disk_hours;                     //  0x0DF
+    uint8_t boostrap2[216];                 //  0x0E0 bootstrap code part 2
+    uint32_t disk_signature;                //  0x1B8
+    uint16_t copy_protected;                //  0x1BC
+    partition_def_t partitions[4];          //  0x1BE four partition tables
+    uint8_t signature[2];                   //  0x1FE signature, 0x55, 0xAA
 } master_boot_record_t;
 
 static_assert(sizeof(master_boot_record_t) == 512,
               "master_boot_record_t should be 512 bytes");
 
-typedef struct TU_ATTR_PACKED
-{
-    uint8_t jump_instruction[3];            //   3 -- boot sector
-    uint8_t oem_info[8];                    //  11
-    uint16_t sector_size;                   //  13 -- bios param block
-    uint8_t sectors_per_cluster;            //  14
-    uint16_t reserved_sectors;              //  16
-    uint8_t fat_copies;                     //  17
-    uint16_t root_directory_entries;        //  19
-    uint16_t total_sectors_16;              //  21
-    uint8_t media_descriptor;               //  22
-    uint16_t sectors_per_fat_chain;         //  24
-    uint16_t sectors_per_track;             //  26
-    uint16_t heads;                         //  28
-    uint32_t hidden_sectors;                //  32
-    uint32_t total_sectors_32;              //  36
-    uint8_t physical_drive_num;             //  37 -- extended boot record
-    uint8_t reserved;                       //  38
-    uint8_t extended_boot_sig;              //  39
-    uint32_t volume_serial_number;          //  43
-    char volume_label[11];                  //  54
-    uint8_t filesystem_identifier[8];       //  62
-    uint8_t reserved2[510 - 62];            // 510
-    uint8_t boot_signature[2];              // 512 -- boot sector signature
-} boot_sector_t;
+typedef struct TU_ATTR_PACKED               //  start
+{                                           // offset notes
+    uint8_t jump_instruction[3];            //  0x000
+    uint8_t oem_info[8];                    //  0x003
+    uint16_t sector_size;                   //  0x00B bios param block
+    uint8_t sectors_per_cluster;            //  0x00D
+    uint16_t reserved_sectors;              //  0x00E
+    uint8_t fat_copies;                     //  0x010
+    uint16_t root_directory_entries;        //  0x011
+    uint16_t sector_count_16;               //  0x013
+    uint8_t media_descriptor;               //  0x015
+    uint16_t fat_sectors;                   //  0x016
+    uint16_t sectors_per_track;             //  0x018 DOS 3.31 BPB
+    uint16_t heads;                         //  0x01A
+    uint32_t hidden_sectors;                //  0x01C
+    uint32_t sector_count_32;               //  0x020
+    uint8_t drive_num;                      //  0x024 extended boot param block (FAT 12/16)
+    uint8_t reserved;                       //  0x025
+    uint8_t boot_sig;                       //  0x026
+    uint32_t volume_serial_number;          //  0x027
+    char volume_label[11];                  //  0x02B only available if boot_sig = 0x29
+    uint8_t fs_identifier[8];               //  0x036 only available if boot_sig = 0x29
+    uint8_t boot_code[0x1FE - 0x03E];       //  0x03E
+    uint8_t signature[2];                   //  0x1FE signature, 0x55, 0xAA
+} bios_boot_sector_t;
 
-static_assert(sizeof(boot_sector_t) == 512,
-              "boot_sector_t should be 512 bytes");
+static_assert(sizeof(bios_boot_sector_t) == 512,
+              "bios_boot_sector_t should be 512 bytes");
 
-typedef struct TU_ATTR_PACKED
-{
-    char name[8];
-    char ext[3];
-    uint8_t attrs;
-    uint8_t reserved;
-    uint8_t create_time_fine;
-    uint16_t create_time;
-    uint16_t create_date;
-    uint16_t last_access_date;
-    uint16_t high_start_cluster;
-    uint16_t update_time;
-    uint16_t update_date;
-    uint16_t start_cluster;
-    uint32_t size;
-} fat_direntry_t;
-
-static_assert(sizeof(fat_direntry_t) == 32,
-              "fat_direntry_t should be 32 bytes");
-
-typedef enum
+typedef enum : uint8_t
 {
     DIRENT_READ_ONLY = 0x01,
     DIRENT_HIDDEN = 0x02,
@@ -152,14 +132,51 @@ typedef enum
     DIRENT_ARCHIVE = 0x20,
     DIRENT_DEVICE = 0x40,
     DIRENT_RESERVED = 0x80
-} FAT_DIRENTRY_ATTRS;
+} DIRENTRY_ATTRS;
+
+typedef struct TU_ATTR_PACKED               //  start
+{                                           // offset notes
+    char name[8];                           //   0x00 space padded
+    char ext[3];                            //   0x08 space padded
+    uint8_t attributes;                     //   0x0B bitmask of DIRENTRY_ATTRS
+    uint8_t reserved;                       //   0x0C
+    uint8_t create_time_fine;               //   0x0D
+    uint16_t create_time;                   //   0x0E bits 15-11 are hours, 10-5 minutes, 4-0 seconds
+    uint16_t create_date;                   //   0x10 bits 15-9 are year (0=1980), 8-5 month, 4-0 day
+    uint16_t last_access_date;              //   0x12 same format as create_date
+    uint16_t high_start_cluster;            //   0x14 FAT-32 only, high bytes for cluster start
+    uint16_t update_time;                   //   0x16 same format as create_time
+    uint16_t update_date;                   //   0x18 same format as create_date
+    uint16_t start_cluster;                 //   0x1A starting cluster (FAT-16), low order bytes for FAT-32.
+    uint32_t size;                          //   0x1C
+} fat_direntry_t;
+
+static_assert(sizeof(fat_direntry_t) == 32,
+              "fat_direntry_t should be 32 bytes");
+
+#if CONFIG_TINYUSB_MSC_LONG_FILENAMES
+typedef struct TU_ATTR_PACKED               //  start
+{                                           // offset notes
+    uint8_t sequence;                       //   0x00 bit 6 indicates last in sequence, bits 0-5 are index.
+    uint16_t name[5];                       //   0x01 first five UTF-16 characters of name
+    uint8_t attributes;                     //   0x0B always 0x0F
+    uint8_t type;                           //   0x0C always 0x00
+    uint8_t checksum;                       //   0x0D
+    uint16_t name2[6];                      //   0x0E next six UTF-16 characters of name
+    uint16_t start_cluster;                 //   0x1A always 0x0000
+    uint16_t name3[2];                      //   0x1C last two UTF-16 charactes of name
+} fat_long_filename_t;
+
+static_assert(sizeof(fat_long_filename_t) == sizeof(fat_direntry_t),
+              "fat_long_filename_t should be same size as fat_direntry_t");
+#endif // CONFIG_TINYUSB_MSC_LONG_FILENAMES
 
 typedef struct
 {
     char name[8];
     char ext[3];
     const char *content;
-    uint8_t flags;
+    uint8_t attributes;
     uint32_t size;
     uint32_t start_sector;
     uint32_t end_sector;
@@ -167,11 +184,18 @@ typedef struct
     uint16_t end_cluster;
     const esp_partition_t *partition;
     std::string printable_name;
+    uint8_t root_dir_sector;
+#if CONFIG_TINYUSB_MSC_LONG_FILENAMES
+    std::vector<fat_long_filename_t> lfn_parts;
+#endif // CONFIG_TINYUSB_MSC_LONG_FILENAMES
 } fat_file_entry_t;
+
+static_assert((CONFIG_TINYUSB_MSC_VDISK_FILE_COUNT & 15) == 0,
+              "Number of files on the virtual disk must be a multiple of 16");
 
 static constexpr uint16_t DIRENTRIES_PER_SECTOR =
     (CONFIG_TINYUSB_MSC_VDISK_SECTOR_SIZE / sizeof(fat_direntry_t));
-static constexpr uint16_t SECTORS_PER_FAT_CHAIN = 
+static constexpr uint16_t SECTORS_PER_FAT_TABLE = 
     ((CONFIG_TINYUSB_MSC_VDISK_SECTOR_COUNT * 2) +
      (CONFIG_TINYUSB_MSC_VDISK_SECTOR_SIZE - 1))
     / CONFIG_TINYUSB_MSC_VDISK_SECTOR_SIZE;
@@ -179,16 +203,39 @@ static constexpr uint16_t SECTORS_PER_FAT_CHAIN =
 static constexpr uint16_t FAT_COPY_0_FIRST_SECTOR =
     CONFIG_TINYUSB_MSC_VDISK_RESERVED_SECTOR_COUNT;
 static constexpr uint16_t FAT_COPY_1_FIRST_SECTOR =
-    FAT_COPY_0_FIRST_SECTOR + SECTORS_PER_FAT_CHAIN;
-static constexpr uint16_t ROOT_DIR_FIRST_SECTOR =
-    FAT_COPY_1_FIRST_SECTOR + SECTORS_PER_FAT_CHAIN;
-static constexpr uint16_t FILE_CONTENT_FIRST_SECTOR =
-    ROOT_DIR_FIRST_SECTOR +
+    FAT_COPY_0_FIRST_SECTOR + SECTORS_PER_FAT_TABLE;
+static constexpr uint16_t ROOT_DIR_SECTOR_COUNT = 
     (CONFIG_TINYUSB_MSC_VDISK_FILE_COUNT / DIRENTRIES_PER_SECTOR);
+static constexpr uint16_t ROOT_DIR_FIRST_SECTOR =
+    FAT_COPY_1_FIRST_SECTOR + SECTORS_PER_FAT_TABLE;
+static constexpr uint16_t FILE_CONTENT_FIRST_SECTOR =
+    ROOT_DIR_FIRST_SECTOR + ROOT_DIR_SECTOR_COUNT;
 
+/// Special marker for FAT cluster end of file (FAT-16).
 static constexpr uint16_t FAT_CLUSTER_END_OF_FILE = 0xFFFF;
 
-static boot_sector_t s_boot_sector =
+#if CONFIG_TINYUSB_MSC_LONG_FILENAMES
+/// Maximum length of filename.
+/// NOTE: this excludes the period between the filename and extension.
+static constexpr uint8_t MAX_FILENAME_LENGTH = 38;
+#else
+/// Maximum length of filename.
+/// NOTE: this excludes the period between the filename and extension.
+static constexpr uint8_t MAX_FILENAME_LENGTH = 11;
+#endif // CONFIG_TINYUSB_MSC_LONG_FILENAMES
+
+/// Flag for @ref bios_boot_sector_t boot_sig field indicating that the
+/// volume_label and fs_identifier fields are populated.
+static constexpr uint8_t BOOT_SIGNATURE_SERIAL_ONLY = 0x28;
+
+/// Flag for @ref bios_boot_sector_t boot_sig field indicating that the
+/// volume_label and fs_identifier fields are not populated and should be
+/// ignored.
+static constexpr uint8_t BOOT_SIGNATURE_SERIAL_LABEL_IDENT = 0x29;
+
+/// Static copy of the bios boot sector that will be presented to the operating
+/// system on-demand. Note all fields are in little-endian format.
+static bios_boot_sector_t s_bios_boot_sector =
 {
     .jump_instruction = {0xEB, 0x3C, 0x90},
     .oem_info = {'M','S','D','O','S','5','.','0'},
@@ -197,28 +244,36 @@ static boot_sector_t s_boot_sector =
     .reserved_sectors = CONFIG_TINYUSB_MSC_VDISK_RESERVED_SECTOR_COUNT,
     .fat_copies = 2,
     .root_directory_entries = CONFIG_TINYUSB_MSC_VDISK_FILE_COUNT,
-    .total_sectors_16 = CONFIG_TINYUSB_MSC_VDISK_SECTOR_COUNT,
+    .sector_count_16 = CONFIG_TINYUSB_MSC_VDISK_SECTOR_COUNT,
     .media_descriptor = 0xF8,
-    .sectors_per_fat_chain = SECTORS_PER_FAT_CHAIN,
+    .fat_sectors = SECTORS_PER_FAT_TABLE,
     .sectors_per_track = 1,
     .heads = 1,
     .hidden_sectors = 0,
-    .total_sectors_32 = 0,
-    .physical_drive_num = 0x80,
+    .sector_count_32 = 0,
+    .drive_num = 0x80,
     .reserved = 0,
-    .extended_boot_sig = 0x29,
+    .boot_sig = BOOT_SIGNATURE_SERIAL_LABEL_IDENT,
     .volume_serial_number = 0,
     .volume_label = {'e','s','p','3','2','s','2'},
-    .filesystem_identifier = {'F','A','T','1','6',' ',' ',' '},
-    .reserved2 = {0},
-    .boot_signature = {0x55, 0xaa}
+    .fs_identifier = {'F','A','T','1','6',' ',' ',' '},
+    .boot_code = {0},
+    .signature = {0x55, 0xaa}
 };
+
 static std::vector<fat_file_entry_t> s_root_directory;
+static uint8_t s_root_directory_entry_usage[ROOT_DIR_SECTOR_COUNT];
 
 static const char * const s_vendor_id = CONFIG_TINYUSB_MSC_VENDOR_ID;
 static const char * const s_product_id = CONFIG_TINYUSB_MSC_PRODUCT_ID;
 static const char * const s_product_rev = CONFIG_TINYUSB_MSC_PRODUCT_REVISION;
 
+/// Utility function to copy a string into a target field using spaces to pad
+/// to a set length.
+///
+/// @param dst destination array.
+/// @param src source string.
+/// @param len size of destination array.
 static void space_padded_memcpy(char *dst, const char *src, int len)
 {
     for (int i = 0; i < len; ++i)
@@ -227,25 +282,36 @@ static void space_padded_memcpy(char *dst, const char *src, int len)
     }
 }
 
+// configures the virtual disk system
 void configure_virtual_disk(std::string label, uint32_t serial_number)
 {
-    space_padded_memcpy(s_boot_sector.volume_label, label.c_str(), 11);
-    s_boot_sector.volume_serial_number = htole32(serial_number);
+    space_padded_memcpy(s_bios_boot_sector.volume_label, label.c_str(), 11);
+    s_bios_boot_sector.volume_serial_number = htole32(serial_number);
+    uint32_t sector_count = s_bios_boot_sector.sector_count_16;
+    if (sector_count == 0)
+    {
+        sector_count = s_bios_boot_sector.sector_count_32;
+    }
     ESP_LOGI(TAG,
              "USB Virtual disk %-11.11s\n"
              "%d total sectors (%d bytes)\n"
              "%d reserved sector(s)\n"
-             "%d sectors per cluster (%d bytes)\n"
+             "%d sectors per fat (%d bytes)\n"
              "fat0 sector start: %d\n"
              "fat1 sector start: %d\n"
              "root directory sector start: %d (%d entries, %d per sector)\n"
              "first file sector start: %d\n"
-           , s_boot_sector.volume_label
-           , s_boot_sector.total_sectors_16
-           , s_boot_sector.total_sectors_16 * s_boot_sector.sector_size
-           , s_boot_sector.reserved_sectors
-           , s_boot_sector.sectors_per_fat_chain
-           , s_boot_sector.sectors_per_fat_chain * s_boot_sector.sector_size
+#if CONFIG_TINYUSB_MSC_LONG_FILENAMES
+             "long filenames: enabled"
+#else
+             "long filenames: disabled"
+#endif // CONFIG_TINYUSB_MSC_LONG_FILENAMES
+           , s_bios_boot_sector.volume_label
+           , sector_count
+           , (sector_count * s_bios_boot_sector.sector_size)
+           , s_bios_boot_sector.reserved_sectors
+           , s_bios_boot_sector.fat_sectors
+           , s_bios_boot_sector.fat_sectors * s_bios_boot_sector.sector_size
            , FAT_COPY_0_FIRST_SECTOR
            , FAT_COPY_1_FIRST_SECTOR
            , ROOT_DIR_FIRST_SECTOR
@@ -255,22 +321,35 @@ void configure_virtual_disk(std::string label, uint32_t serial_number)
     );
 
     // convert fields to little endian
-    s_boot_sector.sector_size = htole16(s_boot_sector.sector_size);
-    s_boot_sector.reserved_sectors = htole16(s_boot_sector.reserved_sectors);
-    s_boot_sector.root_directory_entries = htole16(s_boot_sector.root_directory_entries);
-    s_boot_sector.total_sectors_16 = htole16(s_boot_sector.total_sectors_16);
-    s_boot_sector.sectors_per_fat_chain = htole16(s_boot_sector.sectors_per_fat_chain);
-    s_boot_sector.sectors_per_track = htole16(s_boot_sector.sectors_per_track);
-    s_boot_sector.heads = htole16(s_boot_sector.heads);
-    s_boot_sector.hidden_sectors = htole32(s_boot_sector.hidden_sectors);
-    s_boot_sector.heads = htole32(s_boot_sector.heads);
+    s_bios_boot_sector.sector_size = htole16(s_bios_boot_sector.sector_size);
+    s_bios_boot_sector.reserved_sectors =
+        htole16(s_bios_boot_sector.reserved_sectors);
+    s_bios_boot_sector.root_directory_entries =
+        htole16(s_bios_boot_sector.root_directory_entries);
+    s_bios_boot_sector.sector_count_16 =
+        htole16(s_bios_boot_sector.sector_count_16);
+    s_bios_boot_sector.sector_count_32 =
+        htole32(s_bios_boot_sector.sector_count_32);
+    s_bios_boot_sector.fat_sectors = htole16(s_bios_boot_sector.fat_sectors);
+    s_bios_boot_sector.sectors_per_track =
+        htole16(s_bios_boot_sector.sectors_per_track);
+    s_bios_boot_sector.heads = htole16(s_bios_boot_sector.heads);
+    s_bios_boot_sector.hidden_sectors =
+        htole32(s_bios_boot_sector.hidden_sectors);
+    s_bios_boot_sector.heads = htole32(s_bios_boot_sector.heads);
+
+    // initialize all root directory sectors to have zero file entries.
+    memset(s_root_directory_entry_usage, 0, ROOT_DIR_SECTOR_COUNT);
+    // track the volume label as part of the first sector.
+    s_root_directory_entry_usage[0] = 1;
 }
 
 esp_err_t register_virtual_file(const std::string name, const char *content,
                                 uint32_t size, bool read_only,
                                 const esp_partition_t *partition)
 {
-    if (s_root_directory.size() > CONFIG_TINYUSB_MSC_VDISK_FILE_COUNT)
+    // one directory entry is reserved for the volume label
+    if (s_root_directory.size() > (CONFIG_TINYUSB_MSC_VDISK_FILE_COUNT - 1))
     {
         ESP_LOGE(TAG
                , "Maximum file count has been reached, rejecting new file!");
@@ -291,37 +370,104 @@ esp_err_t register_virtual_file(const std::string name, const char *content,
     std::string extension = "";
     if (pos == std::string::npos)
     {
-        // truncate the base name to a max of eleven characters, including the
-        // file extension (if present)
-        if (base_name.length() > 11)
+        // truncate the filename to the maximum length limit
+        if (base_name.length() > MAX_FILENAME_LENGTH)
         {
-            base_name.resize(11);
+            base_name.resize(MAX_FILENAME_LENGTH);
         }
         // copy the filename as-is into the base name and extension fields with
         // space padding as needed. NOTE: this will overflow the name field.
-        strncpy(file.name, base_name.c_str(), base_name.length());
+        strncpy(file.name, base_name.c_str(), std::min((size_t)11, base_name.length()));
         file.printable_name.assign(std::move(base_name));
     }
     else
     {
         base_name = name.substr(0, pos);
         extension = name.substr(pos + 1, 3);
-        // truncate the base name to a max of eight characters
-        if (base_name.length() > 8)
+        // possibly truncate the base name so it fits within the max file length
+        if (base_name.length() > MAX_FILENAME_LENGTH - 3)
         {
-            base_name.resize(8);
+            base_name.resize(MAX_FILENAME_LENGTH - 3);
         }
-        strncpy(file.name, base_name.c_str(), base_name.length());
-        strncpy(file.ext, extension.c_str(), extension.length());
+        for (size_t index = 0; index < std::min((size_t)8, base_name.length()); index++)
+        {
+            file.name[index] = toupper(base_name.at(index));
+        }
+        for (size_t index = 0; index < extension.length(); index++)
+        {
+            file.ext[index] = toupper(extension.at(index));
+        }
         file.printable_name.assign(std::move(base_name)).append(".").append(extension);
     }
+#if CONFIG_TINYUSB_MSC_LONG_FILENAMES
+    // if the filename is longer than the maximum allowed for 8.3 format
+    // convert it to a long filename instead
+    if (file.printable_name.length() > 12)
+    {
+        // mark the file name as truncated.
+        file.name[6] = '~';
+        file.name[7] = '1';
+        uint8_t lfn_checksum = 0;
+        uint8_t *p = (uint8_t *)file.name;
+        for (size_t index = 11; index; index--)
+        {
+            lfn_checksum = ((lfn_checksum & 1) << 7) +
+                            (lfn_checksum >> 1) + *p++;
+        }
+        size_t offs = 0;
+        uint8_t fragments = 1;
+        while (offs < file.printable_name.length())
+        {
+            fat_long_filename_t part;
+            bzero(&part, sizeof(fat_long_filename_t));
+            std::string name_part = file.printable_name.substr(offs, 13);
+            ESP_LOGD(TAG, "fragment(%d) %s", fragments, name_part.c_str());
+            part.sequence = fragments++;
+            part.checksum = lfn_checksum;
+            part.attributes = DIRENTRY_ATTRS::DIRENT_READ_ONLY |
+                              DIRENTRY_ATTRS::DIRENT_HIDDEN |
+                              DIRENTRY_ATTRS::DIRENT_SYSTEM |
+                              DIRENTRY_ATTRS::DIRENT_VOLUME_LABEL;
+            // all long filename entries must have one null character
+            if (name_part.length() < 13)
+            {
+                name_part += (unsigned char)0x00;
+            }
+            // pad remaining characters with 0xFF
+            while (name_part.length() < 13)
+            {
+                name_part += (unsigned char)0xFF;
+            }
+            for (size_t idx = 0; idx < name_part.length(); idx++)
+            {
+                if (idx < 5)
+                {
+                    part.name[idx] = name_part[idx] != 0xFF ? name_part[idx] : 0xFFFF;
+                }
+                else if (idx < 11)
+                {
+                    part.name2[idx - 5] = name_part[idx] != 0xFF ? name_part[idx] : 0xFFFF;
+                }
+                else
+                {
+                    part.name3[idx - 11] = name_part[idx] != 0xFF ? name_part[idx] : 0xFFFF;
+                }
+            }
+            // insert the fragment at the front of the collection
+            file.lfn_parts.insert(file.lfn_parts.begin(), part);
+            offs += name_part.length();
+        }
+        file.lfn_parts[0].sequence |= 0x40; // mark as last in sequence
+        ESP_LOGI(TAG, "Created %d name fragments", file.lfn_parts.size());
+    }
+#endif // CONFIG_TINYUSB_MSC_LONG_FILENAMES
     file.content = content;
     file.partition = partition;
     file.size = size;
-    file.flags = FAT_DIRENTRY_ATTRS::DIRENT_ARCHIVE;
+    file.attributes = DIRENTRY_ATTRS::DIRENT_ARCHIVE;
     if (read_only)
     {
-        file.flags |= FAT_DIRENTRY_ATTRS::DIRENT_READ_ONLY;
+        file.attributes |= DIRENTRY_ATTRS::DIRENT_READ_ONLY;
     }
 
     if (s_root_directory.empty())
@@ -335,14 +481,38 @@ esp_err_t register_virtual_file(const std::string name, const char *content,
         file.start_cluster = s_root_directory.back().end_cluster + 1;
     }
     file.end_sector = file.start_sector;
-    file.end_sector += (size / s_boot_sector.sector_size);
+    file.end_sector += (size / s_bios_boot_sector.sector_size);
     file.end_cluster = file.start_cluster;
-    file.end_cluster += (size / s_boot_sector.sector_size);
+    file.end_cluster += (size / s_bios_boot_sector.sector_size);
+    // scan root directory sectors to assign this file to a root dir sector
+    for (uint8_t index = 0; index < ROOT_DIR_SECTOR_COUNT; index++)
+    {
+        uint8_t entries_needed = 1;
+#if CONFIG_TINYUSB_MSC_LONG_FILENAMES
+        // if the filename is longer than 12 characters (including period)
+        // calculate the number of additional entries required. Each fragment
+        // can hold up to 13 characters.
+        if (file.printable_name.length() > 12)
+        {
+            // for long filenames we will always need at least one additional
+            // entry
+            entries_needed++;
+            entries_needed += (file.printable_name.length() > 13);
+            entries_needed += (file.printable_name.length() > 26);
+        }
+#endif
+        if (s_root_directory_entry_usage[index] + entries_needed < DIRENTRIES_PER_SECTOR)
+        {
+            s_root_directory_entry_usage[index] += entries_needed;
+            file.root_dir_sector = index;
+            break;
+        }
+    }
     s_root_directory.push_back(file);
     ESP_LOGI(TAG,
-             "File(%s) sectors: %d - %d, clusters: %d - %d, %d bytes",
+             "File(%s) sectors: %d - %d, clusters: %d - %d, %d bytes, root: %d",
              file.printable_name.c_str(), file.start_sector, file.end_sector,
-             file.start_cluster, file.end_cluster, size);
+             file.start_cluster, file.end_cluster, size, file.root_dir_sector);
 
     return ESP_OK;
 }
@@ -431,8 +601,15 @@ bool tud_msc_test_unit_ready_cb(uint8_t lun)
 void tud_msc_capacity_cb(uint8_t lun, uint32_t *block_count,
                          uint16_t *block_size)
 {
-    *block_count = s_boot_sector.total_sectors_16;
-    *block_size  = s_boot_sector.sector_size;
+    if (s_bios_boot_sector.sector_count_16)
+    {
+        *block_count = s_bios_boot_sector.sector_count_16;
+    }
+    else
+    {
+        *block_count = s_bios_boot_sector.sector_count_32;
+    }
+    *block_size  = s_bios_boot_sector.sector_size;
 }
 
 // Callback for READ10 command.
@@ -444,26 +621,26 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
     bzero(buffer, bufsize);
     if (lba == 0)
     {
-        // Requested boot block
-        memcpy(buffer, &s_boot_sector, bufsize);
+        // Requested bios boot sector
+        memcpy(buffer, &s_bios_boot_sector, bufsize);
         ESP_LOG_BUFFER_HEX_LEVEL(TAG, buffer, bufsize, MSC_LOG_LEVEL_BOOT_SECTOR);
     }
     else if (lba < ROOT_DIR_FIRST_SECTOR)
     {
-        uint32_t fat_chain = (lba - FAT_COPY_0_FIRST_SECTOR);
-        if (fat_chain > s_boot_sector.sectors_per_fat_chain)
+        uint32_t fat_table = (lba - FAT_COPY_0_FIRST_SECTOR);
+        if (fat_table > s_bios_boot_sector.fat_sectors)
         {
-            fat_chain -= s_boot_sector.sectors_per_fat_chain;
+            fat_table -= s_bios_boot_sector.fat_sectors;
         }
-        uint32_t cluster_start = fat_chain * 256;
-        uint32_t cluster_end = ((fat_chain + 1) * 256) - 1;
-        ESP_LOGI(TAG, "FAT Chain: %d (sector: %d-%d)", fat_chain,
-                 cluster_start, cluster_end);
+        uint32_t cluster_start = fat_table * 256;
+        uint32_t cluster_end = ((fat_table + 1) * 256) - 1;
+        ESP_LOGI(TAG, "FAT: %d (sector: %d-%d)", fat_table,
+                cluster_start, cluster_end);
         uint16_t *buf_16 = (uint16_t *)buffer;
-        if (fat_chain == 0)
+        if (fat_table == 0)
         {
             // cluster zero is reserved for FAT ID and media descriptor.
-            buf_16[0] = htole16(0xFF00 | s_boot_sector.media_descriptor);
+            buf_16[0] = htole16(0xFF00 | s_bios_boot_sector.media_descriptor);
             // cluster one is reserved.
             buf_16[1] = FAT_CLUSTER_END_OF_FILE;
         }
@@ -480,8 +657,8 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
                 file.end_cluster >= cluster_start)
             {
                 ESP_LOGI(TAG, "File: %s (%d-%d) is in range (%d-%d)"
-                       , file.printable_name.c_str(), file.start_cluster, file.end_cluster
-                       , cluster_start, cluster_end);
+                       , file.printable_name.c_str(), file.start_cluster
+                       , file.end_cluster, cluster_start, cluster_end);
                 for(size_t index = 0; index < 256; index++)
                 {
                     uint32_t target_cluster = cluster_start + index;
@@ -506,44 +683,55 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
     }
     else if (lba < FILE_CONTENT_FIRST_SECTOR)
     {
-        uint8_t entries = 0;
         fat_direntry_t *d = static_cast<fat_direntry_t *>(buffer);
         // Requested sector of the root directory
         uint32_t sector_idx = (lba - ROOT_DIR_FIRST_SECTOR);
-        ESP_LOGI(TAG, "reading root directory sector %d(%d,%d,%d)", sector_idx,
-                 lba, bufsize, offset);
+        ESP_LOGI(TAG, "reading root directory sector %d", sector_idx);
         if (sector_idx == 0)
         {
-            ESP_LOGD(TAG, "Adding disk volume label: %11.11s",
-                     s_boot_sector.volume_label);
+            ESP_LOGI(TAG, "Adding disk volume label: %11.11s",
+                     s_bios_boot_sector.volume_label);
             // NOTE this will overrun d->name and spill over into d->ext
-            memcpy(d->name, s_boot_sector.volume_label, 11);
-            d->attrs = FAT_DIRENTRY_ATTRS::DIRENT_ARCHIVE |
-                       FAT_DIRENTRY_ATTRS::DIRENT_VOLUME_LABEL;
+            memcpy(d->name, s_bios_boot_sector.volume_label, 11);
+            d->attributes = DIRENTRY_ATTRS::DIRENT_ARCHIVE |
+                            DIRENTRY_ATTRS::DIRENT_VOLUME_LABEL;
+            d->start_cluster = 0;
             d++;
-            entries++;
         }
-        size_t max_index = std::min((sector_idx + 1) * DIRENTRIES_PER_SECTOR,
-                                    s_root_directory.size());
-        for (size_t index = (sector_idx * DIRENTRIES_PER_SECTOR);
-             index < max_index;
-             index++)
+        for (auto &file : s_root_directory)
         {
-            auto &file = s_root_directory[index];
+            if (file.root_dir_sector != sector_idx)
+            {
+                continue;
+            }
+            ESP_LOGI(TAG, "Creating directory entry for: %s",
+                     file.printable_name.c_str());
+#if CONFIG_TINYUSB_MSC_LONG_FILENAMES
+            // add directory entries for name fragments.
+            if (file.lfn_parts.size())
+            {
+                fat_long_filename_t *lfn = (fat_long_filename_t *)d;
+                for(auto &lfn_part : file.lfn_parts)
+                {
+                    memcpy(lfn, &lfn_part, sizeof(fat_long_filename_t));
+                    lfn++;
+                    d++;
+                }
+            }
+#endif // CONFIG_TINYUSB_MSC_LONG_FILENAMES
             // note this will clear the file extension.
             space_padded_memcpy(d->name, file.name, 11);
             space_padded_memcpy(d->ext, file.ext, 3);
-            ESP_LOGI(TAG, "Adding file: %11.11s", d->name);
-            d->attrs = file.flags;
+            d->attributes = file.attributes;
             d->size = file.size;
             d->start_cluster = file.start_cluster;
             d->create_date = 0x4d99;
             d->update_date = 0x4d99;
             // move to the next directory entry in the buffer
             d++;
-            entries++;
         }
-        ESP_LOGI(TAG, "Directory entries added: %d", entries);
+        ESP_LOGI(TAG, "Directory entries added: %d",
+                 s_root_directory_entry_usage[sector_idx]);
         ESP_LOG_BUFFER_HEX_LEVEL(TAG, buffer, bufsize,
                                  MSC_LOG_LEVEL_ROOT_DIRECTORY);
     }
@@ -559,7 +747,7 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
 
                 size_t temp_size = bufsize;
                 size_t sector_offset =
-                    (sector_idx * s_boot_sector.sector_size) + offset;
+                    (sector_idx * s_bios_boot_sector.sector_size) + offset;
                 uint32_t file_size = file.size;
                 // bounds check to ensure the read does not go beyond the
                 // recorded file size.
@@ -615,7 +803,7 @@ int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
         {
             if (lba >= file.start_sector && lba <= file.end_sector)
             {
-                if (file.flags & FAT_DIRENTRY_ATTRS::DIRENT_READ_ONLY)
+                if (file.attributes & DIRENTRY_ATTRS::DIRENT_READ_ONLY)
                 {
                     ESP_LOGV(TAG, "Attempt to write to read only file.");
                     return -1;
@@ -626,7 +814,7 @@ int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
                     uint32_t sector_idx = lba - file.start_sector;
                     size_t temp_size = bufsize;
                     size_t sector_offset =
-                        (sector_idx * s_boot_sector.sector_size) + offset;
+                        (sector_idx * s_bios_boot_sector.sector_size) + offset;
                     uint32_t file_size = file.size;
                     // bounds check to ensure the write does not go beyond the
                     // recorded file size.

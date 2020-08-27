@@ -131,12 +131,26 @@ menu "TinyUSB (esp32s2usb)"
         config TINYUSB_MSC_VDISK_FILE_COUNT
             int "Max number of files"
             default 64
-            range 16 128
+            range 16 256
             help
                 Maximum number of files to present on the virtual disk. This is
                 used to calculate how many sectors to reserve for file entries.
                 Each sector can hold up to 16 files, the first sector has one
-                reserved file entry for the disk label.
+                reserved file entry for the disk label. Note, if long filenames
+                are enabled a higher value should be used here as each long
+                filename will use at least two directory entries.
+
+        config TINYUSB_MSC_LONG_FILENAMES
+            bool "Enable long filename support"
+            default n
+            help
+                Enabling this option allows the usage of long filenames up to
+                39 characters. The length limit of 39 characters is derrived
+                from the usage of up to four directory entries per file with
+                three of them for the long filename and one for the file
+                attributes. The short filename will be generated as the first
+                six characters of the filename (without spaces) with ~1 added
+                and no filename extension.
     endmenu
 
     menu "Vendor Configuration"
