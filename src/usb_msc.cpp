@@ -42,18 +42,18 @@ typedef enum : uint8_t
     PART_FAT_32_LBA = 0x0C,
     PART_FAT_16B_LBA = 0x0E,
     PART_EXTENDED = 0x0F,
-} PARTITION_TYPE;
+} partition_type_t;
 
 typedef enum : uint8_t
 {
     PART_STATUS_UNUSED = 0x00,
     PART_STATUS_ACTIVE = 0x80,
     PART_STATUS_BOOTABLE = 0x80
-} PARTITION_STATUS;
+} partition_status_t;
 
 typedef struct TU_ATTR_PACKED               //  start
 {                                           // offset notes
-    PARTITION_STATUS  status;               //   0x00 status of the disk:
+    partition_status_t  status;             //   0x00 status of the disk:
                                             //        0x00 = inactive
                                             //        0x01-0x7f = invalid
                                             //        0x80 = bootable
@@ -62,7 +62,7 @@ typedef struct TU_ATTR_PACKED               //  start
                                             //        bits 0-5 (0x3F) are for sector
                                             //        bits 6,7 are cylinder bits 8,9
     uint8_t first_cylinder;                 //   0x03
-    PARTITION_TYPE partition_type;          //   0x04
+    partition_type_t partition_type;        //   0x04
     uint8_t last_head;                      //   0x05
     uint8_t last_sector;                    //   0x06 this field is split between sector and cylinder:
                                             //        bits 0-5 (0x3F) are for sector
@@ -132,13 +132,13 @@ typedef enum : uint8_t
     DIRENT_ARCHIVE = 0x20,
     DIRENT_DEVICE = 0x40,
     DIRENT_RESERVED = 0x80
-} DIRENTRY_ATTRS;
+} dirent_attr_t;
 
 typedef struct TU_ATTR_PACKED               //  start
 {                                           // offset notes
     char name[8];                           //   0x00 space padded
     char ext[3];                            //   0x08 space padded
-    uint8_t attributes;                     //   0x0B bitmask of DIRENTRY_ATTRS
+    uint8_t attributes;                     //   0x0B bitmask of dirent_attr_t
     uint8_t reserved;                       //   0x0C
     uint8_t create_time_fine;               //   0x0D
     uint16_t create_time;                   //   0x0E bits 15-11 are hours, 10-5 minutes, 4-0 seconds
@@ -424,10 +424,8 @@ esp_err_t register_virtual_file(const std::string name, const char *content,
             ESP_LOGD(TAG, "fragment(%d) %s", fragments, name_part.c_str());
             part.sequence = fragments++;
             part.checksum = lfn_checksum;
-            part.attributes = DIRENTRY_ATTRS::DIRENT_READ_ONLY |
-                              DIRENTRY_ATTRS::DIRENT_HIDDEN |
-                              DIRENTRY_ATTRS::DIRENT_SYSTEM |
-                              DIRENTRY_ATTRS::DIRENT_VOLUME_LABEL;
+            part.attributes = (DIRENT_READ_ONLY | DIRENT_HIDDEN |
+                               DIRENT_SYSTEM | DIRENT_VOLUME_LABEL);
             // all long filename entries must have one null character
             if (name_part.length() < 13)
             {
@@ -464,10 +462,10 @@ esp_err_t register_virtual_file(const std::string name, const char *content,
     file.content = content;
     file.partition = partition;
     file.size = size;
-    file.attributes = DIRENTRY_ATTRS::DIRENT_ARCHIVE;
+    file.attributes = DIRENT_ARCHIVE;
     if (read_only)
     {
-        file.attributes |= DIRENTRY_ATTRS::DIRENT_READ_ONLY;
+        file.attributes |= DIRENT_READ_ONLY;
     }
 
     if (s_root_directory.empty())
@@ -693,8 +691,7 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
                      s_bios_boot_sector.volume_label);
             // NOTE this will overrun d->name and spill over into d->ext
             memcpy(d->name, s_bios_boot_sector.volume_label, 11);
-            d->attributes = DIRENTRY_ATTRS::DIRENT_ARCHIVE |
-                            DIRENTRY_ATTRS::DIRENT_VOLUME_LABEL;
+            d->attributes = DIRENT_ARCHIVE | DIRENT_VOLUME_LABEL;
             d->start_cluster = 0;
             d++;
         }
@@ -803,7 +800,7 @@ int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
         {
             if (lba >= file.start_sector && lba <= file.end_sector)
             {
-                if (file.attributes & DIRENTRY_ATTRS::DIRENT_READ_ONLY)
+                if ((file.attributes & DIRENT_READ_ONLY) == DIRENT_READ_ONLY)
                 {
                     ESP_LOGV(TAG, "Attempt to write to read only file.");
                     return -1;
