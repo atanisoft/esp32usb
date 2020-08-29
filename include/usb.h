@@ -1,23 +1,29 @@
-// Copyright 2020 Espressif Systems (Shanghai) Co. Ltd.
-// Copyright 2020 Mike Dunston (https://github.com/atanisoft)
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/// \copyright
+/// Copyright 2020 Espressif Systems (Shanghai) Co. Ltd.
+/// Copyright 2020 Mike Dunston (https://github.com/atanisoft)
+///
+/// Licensed under the Apache License, Version 2.0 (the "License");
+/// you may not use this file except in compliance with the License.
+/// You may obtain a copy of the License at
+///
+///     http://www.apache.org/licenses/LICENSE-2.0
+///
+/// Unless required by applicable law or agreed to in writing, software
+/// distributed under the License is distributed on an "AS IS" BASIS,
+/// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+/// See the License for the specific language governing permissions and
+/// limitations under the License.
+///
+/// \file usb.h
+/// This file defines the public API for the esp32s2usb library.
 
 #pragma once
 
 #include "sdkconfig.h"
 #include "tusb_config.h"
 #include "tusb.h"
+
+#include <esp_ota_ops.h>
 
 #include <string>
 
@@ -67,6 +73,7 @@ typedef enum
 } esp_usb_hid_report_t;
 #endif
 
+/// USB CDC line state.
 typedef enum
 {
     /// No device is connected.
@@ -197,33 +204,35 @@ esp_err_t add_readonly_file_to_virtual_disk(const std::string filename,
 /// @return ESP_OK if the file was successfully added to the virtual disk or
 /// ESP_ERR_INVALID_STATE if there are too many files on the virtual disk or
 /// ESP_ERR_NOT_FOUND if the partition could not be found.
-///
-/// NOTE: filename is limited to 8.3 format and will be truncated if
-/// necessary. If the filename provided does not have a "." character then it
-/// will be used as-is up to 11 ASCII characters.
 esp_err_t add_partition_to_virtual_disk(const std::string partition_name,
                                         const std::string filename,
                                         bool writable = false);
 
-/// Adds the currently running firmware and the next available OTA slot as the
-/// previous firmware.
+/// Adds the currently running firmware as an updatable file on the virtual disk.
 ///
-/// @param current_name is used as the filename for the currently running
+/// @param firmware_name is used as the filename for the currently running
 /// firmware, note that this parameter is optional and when omitted the
 /// filename will be "firmware.bin".
-/// @param previous_name is used as the filename for the previous firmware,
-/// note that this parameter is optional and when omitted only the currently
-/// running firmware will be present on the virtual disk.
 ///
-/// @return ESP_OK if the file was successfully added to the virtual disk or
-/// ESP_ERR_INVALID_STATE if there are too many files on the virtual disk.
+/// @return ESP_OK if the file was successfully added to the virtual disk,
+/// ESP_ERR_INVALID_STATE if there are too many files on the virtual disk, or
+/// ESP_ERR_NOT_FOUND if there was a failure loading the currently running
+/// firmware.
+esp_err_t add_firmware_to_virtual_disk(
+    const std::string firmware_name = "firmware.bin");
+
+/// Callback invoked when an OTA update is about to start via the virtual disk.
 ///
-/// NOTE: Both current_name and previous_name are limited to 8.3 format and
-/// will be truncated if necessary. If the filename does not have a "."
-/// character then it will be used as-is up to 11 ASCII characters.
+/// @param app_desc is the new application description.
 ///
-/// NOTE: This API expects only ota_0 and ota_1 to be defined in the partition
-/// map. A future revision may adjust this to support more than two OTA
-/// partitions.
-esp_err_t add_firmware_to_virtual_disk(const std::string current_name = "firmware.bin",
-                                       const std::string previous_name = "");
+/// @return true if the update should be allowed, false if the update should be
+/// rejected with an error returned to the operating system.
+bool ota_update_start_cb(esp_app_desc_t *app_desc);
+
+/// This callback will be invoked around one second after the last data has
+/// been received for an OTA update via the virtual disk. It will also be
+/// called for other error conditions.
+///
+/// @param received_bytes is the number of bytes received as part of the update.
+/// @param err is the status of the OTA update.
+void ota_update_end_cb(size_t received_bytes, esp_err_t err);

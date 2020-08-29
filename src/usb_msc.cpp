@@ -23,12 +23,15 @@
 #define MSC_LOG_LEVEL_FAT_TABLE ESP_LOG_VERBOSE
 // in order for debug data to be printed this needs to be defined prior to
 // inclusion of esp_log.h. The value below is one higher than ESP_LOG_VERBOSE.
-//#define LOG_LOCAL_LEVEL 6
+//#define LOG_LOCAL_LEVEL ESP_LOG_INFO
 
+#include <endian.h>
 #include <esp_log.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
-#include <endian.h>
+#include <esp_system.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/timers.h>
 #include <vector>
 
 static constexpr const char * const TAG = "USB:MSC";
@@ -264,6 +267,15 @@ static bios_boot_sector_t s_bios_boot_sector =
 static std::vector<fat_file_entry_t> s_root_directory;
 static uint8_t s_root_directory_entry_usage[ROOT_DIR_SECTOR_COUNT];
 
+static xTimerHandle msc_write_timer;
+static constexpr TickType_t TIMER_EXPIRE_TICKS = pdMS_TO_TICKS(1000);
+static constexpr TickType_t TIMER_TICKS_TO_WAIT = 0;
+static bool msc_write_active = false;
+static esp_chip_id_t current_chip_id = ESP_CHIP_ID_INVALID;
+static esp_ota_handle_t ota_update_handle = 0;
+const esp_partition_t *ota_update_partition = nullptr;
+static size_t ota_bytes_received;
+
 static const char * const s_vendor_id = CONFIG_TINYUSB_MSC_VENDOR_ID;
 static const char * const s_product_id = CONFIG_TINYUSB_MSC_PRODUCT_ID;
 static const char * const s_product_rev = CONFIG_TINYUSB_MSC_PRODUCT_REVISION;
@@ -279,6 +291,46 @@ static void space_padded_memcpy(char *dst, const char *src, int len)
     for (int i = 0; i < len; ++i)
     {
         *dst++ = *src ? *src++ : ' ';
+    }
+}
+
+/// FreeRTOS Timer expire callback.
+///
+/// @param pxTimer handle of the timer that expired.
+static void msc_write_timeout_cb(xTimerHandle pxTimer)
+{
+    ESP_LOGV(TAG, "ota_update_timer expired");
+    xTimerStop(pxTimer, TIMER_TICKS_TO_WAIT);
+    if (ota_update_partition != nullptr && ota_update_handle)
+    {
+        esp_err_t err =
+            ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ota_end(ota_update_handle));
+        if (err == ESP_OK)
+        {
+            err = ESP_ERROR_CHECK_WITHOUT_ABORT(
+                esp_ota_set_boot_partition(ota_update_partition));
+        }
+        ota_update_end_cb(ota_bytes_received, err);
+    }
+    ota_update_handle = 0;
+    ota_update_partition = nullptr;
+    ota_bytes_received = 0;
+}
+
+// default implementation.
+TU_ATTR_WEAK bool ota_update_start_cb(esp_app_desc_t *app_desc)
+{
+    return true;
+}
+
+// default implementation.
+TU_ATTR_WEAK void ota_update_end_cb(size_t received_bytes, esp_err_t err)
+{
+    ESP_LOGI(TAG, "OTA Update complete callback: %s", esp_err_to_name(err));
+    if (err == ESP_OK)
+    {
+        ESP_LOGI(TAG, "Restarting...");
+        esp_restart();
     }
 }
 
@@ -342,6 +394,28 @@ void configure_virtual_disk(std::string label, uint32_t serial_number)
     memset(s_root_directory_entry_usage, 0, ROOT_DIR_SECTOR_COUNT);
     // track the volume label as part of the first sector.
     s_root_directory_entry_usage[0] = 1;
+
+    msc_write_timer =
+        xTimerCreate("msc_write_timer", TIMER_EXPIRE_TICKS, pdTRUE, nullptr,
+                     msc_write_timeout_cb);
+    current_chip_id = ESP_CHIP_ID_INVALID;
+
+    // determine the type of chip that we are currently
+    // running and convert it to esp_chip_id_t.
+    esp_chip_info_t chip_info;
+    esp_chip_info(&chip_info);
+    if (chip_info.model == CHIP_ESP32)
+    {
+        current_chip_id = ESP_CHIP_ID_ESP32;
+    }
+    else if (chip_info.model == CHIP_ESP32S2)
+    {
+        current_chip_id = ESP_CHIP_ID_ESP32S2;
+    }
+    else if (chip_info.model == CHIP_ESP32S3)
+    {
+        current_chip_id = ESP_CHIP_ID_ESP32S3;
+    }
 }
 
 esp_err_t register_virtual_file(const std::string name, const char *content,
@@ -547,30 +621,54 @@ esp_err_t add_partition_to_virtual_disk(const std::string partition_name
 }
 
 // registers the firmware as a file in the virtual disk.
-esp_err_t add_firmware_to_virtual_disk(const std::string current_name,
-                                       const std::string previous_name)
+esp_err_t add_firmware_to_virtual_disk(const std::string firmware_name)
 {
-    esp_err_t state = ESP_FAIL;
-    const esp_partition_t *current_part = esp_ota_get_running_partition();
-    if (current_part != nullptr)
+    const esp_partition_t *part = esp_ota_get_running_partition();
+    if (part != nullptr)
     {
-        state = ESP_ERROR_CHECK_WITHOUT_ABORT(
-            register_virtual_file(current_name, nullptr, current_part->size
-                                , true, current_part));
-    }
-    if (state == ESP_OK && !previous_name.empty())
-    {
-        const esp_partition_t *next_part =
+        const esp_partition_t *part2 =
             esp_ota_get_next_update_partition(nullptr);
-        if (next_part != nullptr && next_part != current_part)
-        {
-            state = ESP_ERROR_CHECK_WITHOUT_ABORT(
-                register_virtual_file(previous_name, nullptr
-                                    , next_part->size, false, next_part));
-        }
+        // if there is not a second OTA partition to receive the updated
+        // firmware image we need to treat the file as read-only. We do not
+        // disable OTA usage here as the read-only flag will disable write.
+        bool read_only = (part2 == nullptr || part2 == part);
+        return ESP_ERROR_CHECK_WITHOUT_ABORT(
+            register_virtual_file(firmware_name, nullptr, part->size,
+                                  read_only, part));
     }
-    return state;
+    return ESP_ERR_NOT_FOUND;
 }
+
+
+// Utility macro for invoking an ESP-IDF API with with failure return code.
+#define ESP_RETURN_ON_ERROR_READ(name, return_code, x)          \
+    {                                                           \
+        esp_err_t err = ESP_ERROR_CHECK_WITHOUT_ABORT(x);       \
+        if (err != ESP_OK)                                      \
+        {                                                       \
+            ESP_LOGE(TAG, "%s: %s", name, esp_err_to_name(err));\
+            return return_code;                                 \
+        }                                                       \
+    }
+
+// Utility macro for invoking an ESP-IDF API with with failure return code.
+#define ESP_RETURN_ON_ERROR_WRITE(name, return_code, x)         \
+    {                                                           \
+        esp_err_t err = ESP_ERROR_CHECK_WITHOUT_ABORT(x);       \
+        if (err != ESP_OK)                                      \
+        {                                                       \
+            ESP_LOGE(TAG, "%s: %s", name, esp_err_to_name(err));\
+            if (ota_update_handle)                              \
+            {                                                   \
+                ota_update_end_cb(ota_bytes_received, err);     \
+                ota_update_partition = nullptr;                 \
+                ota_bytes_received = 0;                         \
+                ota_update_handle = 0;                          \
+            }                                                   \
+            return return_code;                                 \
+        }                                                       \
+    }
+
 
 // =============================================================================
 // TinyUSB CALLBACKS
@@ -632,7 +730,7 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
         }
         uint32_t cluster_start = fat_table * 256;
         uint32_t cluster_end = ((fat_table + 1) * 256) - 1;
-        ESP_LOGI(TAG, "FAT: %d (sector: %d-%d)", fat_table,
+        ESP_LOGD(TAG, "FAT: %d (sector: %d-%d)", fat_table,
                 cluster_start, cluster_end);
         uint16_t *buf_16 = (uint16_t *)buffer;
         if (fat_table == 0)
@@ -654,7 +752,7 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
             if (file.start_cluster <= cluster_end &&
                 file.end_cluster >= cluster_start)
             {
-                ESP_LOGI(TAG, "File: %s (%d-%d) is in range (%d-%d)"
+                ESP_LOGD(TAG, "File: %s (%d-%d) is in range (%d-%d)"
                        , file.printable_name.c_str(), file.start_cluster
                        , file.end_cluster, cluster_start, cluster_end);
                 for(size_t index = 0; index < 256; index++)
@@ -684,10 +782,10 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
         fat_direntry_t *d = static_cast<fat_direntry_t *>(buffer);
         // Requested sector of the root directory
         uint32_t sector_idx = (lba - ROOT_DIR_FIRST_SECTOR);
-        ESP_LOGI(TAG, "reading root directory sector %d", sector_idx);
+        ESP_LOGD(TAG, "reading root directory sector %d", sector_idx);
         if (sector_idx == 0)
         {
-            ESP_LOGI(TAG, "Adding disk volume label: %11.11s",
+            ESP_LOGD(TAG, "Adding disk volume label: %11.11s",
                      s_bios_boot_sector.volume_label);
             // NOTE this will overrun d->name and spill over into d->ext
             memcpy(d->name, s_bios_boot_sector.volume_label, 11);
@@ -701,7 +799,7 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
             {
                 continue;
             }
-            ESP_LOGI(TAG, "Creating directory entry for: %s",
+            ESP_LOGD(TAG, "Creating directory entry for: %s",
                      file.printable_name.c_str());
 #if CONFIG_TINYUSB_MSC_LONG_FILENAMES
             // add directory entries for name fragments.
@@ -727,7 +825,7 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
             // move to the next directory entry in the buffer
             d++;
         }
-        ESP_LOGI(TAG, "Directory entries added: %d",
+        ESP_LOGD(TAG, "Directory entries added: %d",
                  s_root_directory_entry_usage[sector_idx]);
         ESP_LOG_BUFFER_HEX_LEVEL(TAG, buffer, bufsize,
                                  MSC_LOG_LEVEL_ROOT_DIRECTORY);
@@ -757,12 +855,9 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
 
                 if (file.partition != nullptr)
                 {
-                    if (ESP_ERROR_CHECK_WITHOUT_ABORT(
-                            esp_partition_read(file.partition, sector_offset,
-                                                buffer, temp_size)) != ESP_OK)
-                    {
-                        return -1;
-                    }
+                    ESP_RETURN_ON_ERROR_READ("esp_partition_read", -1,
+                        esp_partition_read(file.partition, sector_offset,
+                                               buffer, temp_size));
                 }
                 else
                 {
@@ -781,48 +876,148 @@ int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
 {
     if (lba == 0)
     {
-        ESP_LOGV(TAG, "Write to BOOT sector\n");
+        ESP_LOGV(TAG, "Write to BOOT sector");
     }
     else if (lba < ROOT_DIR_FIRST_SECTOR)
     {
-        ESP_LOGV(TAG, "Write to FAT cluster chain\n");
+        ESP_LOGV(TAG, "Write to FAT cluster chain");
     }
     else if (lba < FILE_CONTENT_FIRST_SECTOR)
     {
-        ESP_LOGV(TAG, "write to root directory\n");
+        ESP_LOGD(TAG, "write to root directory");
+        fat_direntry_t *entry = (fat_direntry_t *)buffer;
+        for (uint8_t index = 0; index < DIRENTRIES_PER_SECTOR; index++)
+        {
+            if (entry->attributes == 0x0F && entry->start_cluster == 0)
+            {
+                // long filename entry will always have attributes set to 0x0F
+                // and starting cluster as zero.
+                fat_long_filename_t *lfn = (fat_long_filename_t*)entry;
+                uint8_t name[13] = {0};
+                for (uint8_t idx = 0; idx < 13; idx++)
+                {
+                    uint8_t ch = '\0';
+                    if (idx < 5 && (le16toh(lfn->name[idx]) & 0xFF) != 0xFF)
+                    {
+                        ch = (le16toh(lfn->name[idx]) & 0xFF);
+                    }
+                    else if (idx < 11 && (le16toh(lfn->name2[idx - 5]) & 0xFF) != 0xFF)
+                    {
+                        ch = (le16toh(lfn->name2[idx - 5]) & 0xFF);
+                    }
+                    else if (idx < 13 && (le16toh(lfn->name3[idx - 11]) & 0xFF) != 0xFF)
+                    {
+                        ch = (le16toh(lfn->name3[idx - 11]) & 0xFF);
+                    }
+                    name[idx] = ch;
+                }
+                ESP_LOGI(TAG, "LFN: idx:%d (last:%d) %13.13s",
+                         (lfn->sequence & 0x1F),
+                         (lfn->sequence & 0x40) == 0x40, name);
+            }
+            else if (entry->start_cluster)
+            {
+                ESP_LOGI(TAG, "File: %8.8s.%3.3s, size: %d", entry->name, entry->ext, entry->size);
+            }
+            entry++;
+        }
+        // @todo add callback for file received
     }
     else
     {
-        // scan the root directory entries for a file that is in the requested
-        // sector. Check if it is flagged as read-only and reject the write
-        // attempt.
-        for(auto &file : s_root_directory)
+        // check if this is the first write of a new file.
+        if (!msc_write_active)
         {
-            if (lba >= file.start_sector && lba <= file.end_sector)
+            // If the first byte received in the buffer is recognized as the
+            // esp magic byte, try and validate the data as a valid application
+            // image.
+            if (buffer[0] == ESP_IMAGE_HEADER_MAGIC)
             {
-                if ((file.attributes & DIRENT_READ_ONLY) == DIRENT_READ_ONLY)
+                // the first segment of the received binary should have the
+                // image header, segment header and app description. These are
+                // used as a first pass validation of the received data to
+                // ensure it is a valid ESP application image.
+                esp_image_header_t *image = (esp_image_header_t *)buffer;
+                esp_app_desc_t *app_desc =
+                    (esp_app_desc_t *)(buffer + sizeof(esp_image_header_t) +
+                                       sizeof(esp_image_segment_header_t));
+                // validate the image magic byte and chip type to
+                // ensure it matches the currently running chip.
+                if (image->magic == ESP_IMAGE_HEADER_MAGIC &&
+                    image->chip_id != ESP_CHIP_ID_INVALID &&
+                    image->chip_id == current_chip_id &&
+                    app_desc->magic_word == ESP_APP_DESC_MAGIC_WORD)
                 {
-                    ESP_LOGV(TAG, "Attempt to write to read only file.");
-                    return -1;
-                }
-                else if (file.content != nullptr)
-                {
-                    // translate the LBA into the on-disk sector index
-                    uint32_t sector_idx = lba - file.start_sector;
-                    size_t temp_size = bufsize;
-                    size_t sector_offset =
-                        (sector_idx * s_bios_boot_sector.sector_size) + offset;
-                    uint32_t file_size = file.size;
-                    // bounds check to ensure the write does not go beyond the
-                    // recorded file size.
-                    if (bufsize > (file_size - sector_offset))
+                    ESP_LOGI(TAG, "Received data appears to be firmware:");
+                    ESP_LOGI(TAG, "Name: %s (%s)",
+                             app_desc->project_name, app_desc->version);
+                    ESP_LOGI(TAG, "ESP-IDF version: %s", app_desc->idf_ver);
+                    ESP_LOGI(TAG, "Compile timestamp: %s %s", app_desc->date,
+                             app_desc->time);
+                    if (!ota_update_start_cb(app_desc))
                     {
-                        temp_size = file_size - sector_offset;
+                        ESP_LOGE(TAG, "OTA update rejected by application.");
+                        return -1;
                     }
-                    uint8_t *buf = ((uint8_t *)file.content) + sector_offset;
-                    memcpy(buf, buffer, temp_size);
+                    // it appears to be a firmware, try and find a place to
+                    // write it to
+                    ota_update_partition =
+                        esp_ota_get_next_update_partition(NULL);
+                    if (ota_update_partition == nullptr ||
+                        ota_update_partition == esp_ota_get_running_partition())
+                    {
+                        ESP_LOGE(TAG, "Unable to locate a free OTA partition.");
+                        return -1;
+                    }
+                    ESP_LOGI(TAG, "Attempting to start OTA image");
+                    ESP_RETURN_ON_ERROR_WRITE("esp_ota_begin", -1,
+                        esp_ota_begin(ota_update_partition, OTA_SIZE_UNKNOWN,
+                                        &ota_update_handle));
+                    ESP_LOGV(TAG, "ota_update_handle:%d", ota_update_handle);
                 }
             }
+            else
+            {
+                // doesn't appear to be a firmware image, allocate a buffer in
+                // PSRAM (if available) to store the data as it arrives until
+                // the root directory has been updated to map to a filename.
+            }
+
+            // track that we are actively receiving data
+            msc_write_active = true;
+        }
+        // if we are actively writing an ota update process it immediately.
+        if (ota_update_handle)
+        {
+            ESP_RETURN_ON_ERROR_WRITE("esp_ota_write", -1,
+                esp_ota_write(ota_update_handle, buffer, bufsize));
+            // track how much has been written
+            ota_bytes_received += bufsize;
+        }
+        else
+        {
+            // send the data to the temp buffer
+        }
+
+        // restart the update timer
+        xTimerChangePeriod(msc_write_timer, TIMER_EXPIRE_TICKS,
+                            TIMER_TICKS_TO_WAIT);
+        if (!xTimerIsTimerActive(msc_write_timer) &&
+            xTimerStart(msc_write_timer, TIMER_TICKS_TO_WAIT) != pdPASS)
+        {
+            ESP_LOGE(TAG, "Failed to restart MSC timer, giving up!");
+
+            if (ota_update_handle)
+            {
+                ota_update_end_cb(ota_bytes_received, ESP_FAIL);
+            }
+
+            // reset state so that the timer expire callback does not try to
+            // use the received data.
+            ota_update_partition = nullptr;
+            ota_bytes_received = 0;
+            ota_update_handle = 0;
+            return -1;
         }
     }
     return bufsize;
