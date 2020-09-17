@@ -157,7 +157,6 @@ typedef struct TU_ATTR_PACKED               //  start
 static_assert(sizeof(fat_direntry_t) == 32,
               "fat_direntry_t should be 32 bytes");
 
-#if CONFIG_TINYUSB_MSC_LONG_FILENAMES
 typedef struct TU_ATTR_PACKED               //  start
 {                                           // offset notes
     uint8_t sequence;                       //   0x00 bit 6 indicates last in sequence, bits 0-5 are index.
@@ -172,7 +171,6 @@ typedef struct TU_ATTR_PACKED               //  start
 
 static_assert(sizeof(fat_long_filename_t) == sizeof(fat_direntry_t),
               "fat_long_filename_t should be same size as fat_direntry_t");
-#endif // CONFIG_TINYUSB_MSC_LONG_FILENAMES
 
 typedef struct
 {
