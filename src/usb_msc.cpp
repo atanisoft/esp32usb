@@ -428,9 +428,7 @@ esp_err_t register_virtual_file(const std::string name, const char *content,
         return ESP_ERR_INVALID_STATE;
     }
 
-    fat_file_entry_t file;
-    // zero out the file descriptor block
-    bzero(&file, sizeof(fat_file_entry_t));
+    fat_file_entry_t file = {};
 
     // default base name and extension to spaces
     memset(file.name, ' ', TU_ARRAY_SIZE(file.name));
