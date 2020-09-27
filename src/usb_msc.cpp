@@ -445,9 +445,22 @@ esp_err_t register_virtual_file(const std::string name, const char *content,
         {
             base_name.resize(MAX_FILENAME_LENGTH);
         }
-        // copy the filename as-is into the base name and extension fields with
-        // space padding as needed. NOTE: this will overflow the name field.
-        strncpy(file.name, base_name.c_str(), std::min((size_t)11, base_name.length()));
+        // fill the file name and extension to spaces by default.
+        memset(file.name, ' ', 8);
+        memset(file.ext, ' ', 3);
+        // copy up to 11 characters of the filename into the name field, this
+        // will spill over into the ext field.
+        memcpy(file.name, base_name.c_str(), std::min((size_t)11
+                                                    , base_name.length()));
+        // force the file name and extension to be upper case.
+        for (size_t index = 0; index < 8; index++)
+        {
+            file.name[index] = toupper(file.name[index]);
+        }
+        for (size_t index = 0; index < 3; index++)
+        {
+            file.ext[index] = toupper(file.ext[index]);
+        }
         file.printable_name.assign(std::move(base_name));
     }
     else
@@ -506,6 +519,8 @@ esp_err_t register_virtual_file(const std::string name, const char *content,
             {
                 name_part += (unsigned char)0xFF;
             }
+            // encode the filename parts into the three fields available in the
+            // LFN version of the file table entry
             for (size_t idx = 0; idx < name_part.length(); idx++)
             {
                 if (idx < 5)
