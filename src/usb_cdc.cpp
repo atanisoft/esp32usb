@@ -19,7 +19,7 @@
 #include <esp32s2/rom/usb/chip_usb_dw_wrapper.h>
 #include <esp32s2/rom/usb/usb_persist.h>
 #include <freertos/FreeRTOS.h>
-#include <freertos/timers.h>
+#include <freertos/task.h>
 #include <soc/gpio_periph.h>
 #include <soc/rtc_cntl_reg.h>
 #include <soc/usb_periph.h>
@@ -30,11 +30,12 @@ static constexpr const char * const TAG = "USB:CDC";
 
 #if CONFIG_TINYUSB_CDC_ENABLED
 
+/// Current state of the USB CDC interface.
 static esp_line_state_t cdc_line_state = LINE_STATE_DISCONNECTED;
-static xTimerHandle usb_cdc_timer;
-static constexpr TickType_t TIMER_EXPIRE_TICKS =
+
+/// Maximum number of ticks to allow for TX to complete before giving up.
+static constexpr TickType_t WRITE_TIMEOUT_TICKS =
     pdMS_TO_TICKS(CONFIG_TINYUSB_CDC_WRITE_FLUSH_TIMEOUT);
-static constexpr TickType_t TIMER_TICKS_TO_WAIT = 0;
 
 /// System shutdown hook used for flagging that the restart should go into a
 /// download mode rather than normal startup mode.
@@ -68,49 +69,36 @@ static void IRAM_ATTR usb_shutdown_hook(void)
     }
 }
 
-/// FreeRTOS Timer expire callback.
-///
-/// @param pxTimer handle of the timer that expired.
-static void usb_cdc_timeout_cb(xTimerHandle pxTimer)
-{
-    ESP_LOGV(TAG, "usb_cdc_timer stopped");
-    xTimerStop(pxTimer, TIMER_TICKS_TO_WAIT);
-}
-
 /// Initializes the USB CDC.
 void init_usb_cdc()
 {
     // register shutdown hook for rebooting into download mode
     ESP_ERROR_CHECK(esp_register_shutdown_handler(usb_shutdown_hook));
-
-    // create a timer for CDC write
-    usb_cdc_timer = xTimerCreate("usb_cdc_timer", TIMER_EXPIRE_TICKS, pdTRUE
-                               , nullptr, usb_cdc_timeout_cb);
 }
 
 // Attempts to write a buffer to the USB CDC if a device is present.
 size_t write_to_cdc(const char *buf, size_t size)
 {
     size_t offs = 0;
+    uint32_t ticks_start = xTaskGetTickCount();
+    uint32_t ticks_now = ticks_start;
     if (cdc_line_state != LINE_STATE_CONNECTED &&
         cdc_line_state != LINE_STATE_MAYBE_CONNECTED)
     {
         goto exit_write_to_cdc;
     }
 
-    // reconfigure the transmit timeout timer.
-    xTimerChangePeriod(usb_cdc_timer, TIMER_EXPIRE_TICKS, TIMER_TICKS_TO_WAIT);
-    if (!xTimerIsTimerActive(usb_cdc_timer) &&
-        xTimerStart(usb_cdc_timer, TIMER_TICKS_TO_WAIT) != pdPASS)
-    {
-        ESP_LOGE(TAG, "Failed to restart USB CDC timer, giving up!");
-        goto exit_write_to_cdc;
-    }
-
     // while there is still data remaining and we have not timed out keep
     // trying to send data
-    while (offs < size && xTimerIsTimerActive(usb_cdc_timer))
+    while (offs < size)
     {
+        // track the current time
+        ticks_now = xTaskGetTickCount();
+        if ((ticks_now - WRITE_TIMEOUT_TICKS) > ticks_start)
+        {
+            break;
+        }
+
         // pick the smallest buffer size that we can push to the CDC
         uint32_t to_send = std::min(tud_cdc_write_available(), size - offs);
 
@@ -126,9 +114,6 @@ size_t write_to_cdc(const char *buf, size_t size)
         }
         offs += sent;
     }
-
-    // stop the timer
-    xTimerStop(usb_cdc_timer, TIMER_TICKS_TO_WAIT);
 
     // If we still have some data left to transmit by the time we reach
     // here a FIFO overflow occurred.
