@@ -1,9 +1,11 @@
-# What is esp32s2usb?
+# What is esp32s2usb
 
 esp32s2usb is an ESP-IDF component that provides an alternative for the ESP-IDF TinyUSB component.
 This code uses https://github.com/hathach/tinyusb rather than https://github.com/espressif/tinyusb.
 
-# How to use?
+NOTE: esp32s2usb requires ESP-IDF v4.3 or later to work correctly.
+
+# How to use
 In your project, add this as a submodule to your `components/` directory.
 
 ```
