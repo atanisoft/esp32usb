@@ -26,6 +26,7 @@
 //#define LOG_LOCAL_LEVEL ESP_LOG_INFO
 
 #include <endian.h>
+#include <esp_idf_version.h>
 #include <esp_log.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
@@ -393,6 +394,7 @@ void configure_virtual_disk(std::string label, uint32_t serial_number)
     // track the volume label as part of the first sector.
     s_root_directory_entry_usage[0] = 1;
 
+    // TODO: remove the usage of FreeRTOS Timer here.
     msc_write_timer =
         xTimerCreate("msc_write_timer", TIMER_EXPIRE_TICKS, pdTRUE, nullptr,
                      msc_write_timeout_cb);
@@ -402,18 +404,16 @@ void configure_virtual_disk(std::string label, uint32_t serial_number)
     // running and convert it to esp_chip_id_t.
     esp_chip_info_t chip_info;
     esp_chip_info(&chip_info);
-    if (chip_info.model == CHIP_ESP32)
-    {
-        current_chip_id = ESP_CHIP_ID_ESP32;
-    }
-    else if (chip_info.model == CHIP_ESP32S2)
+    if (chip_info.model == CHIP_ESP32S2)
     {
         current_chip_id = ESP_CHIP_ID_ESP32S2;
     }
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
     else if (chip_info.model == CHIP_ESP32S3)
     {
         current_chip_id = ESP_CHIP_ID_ESP32S3;
     }
+#endif // IDF v4.3+
 }
 
 esp_err_t register_virtual_file(const std::string name, const char *content,

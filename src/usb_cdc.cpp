@@ -15,9 +15,20 @@
 #include "sdkconfig.h"
 
 #include <driver/periph_ctrl.h>
+#include <esp_idf_version.h>
 #include <esp_log.h>
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
 #include <esp32s2/rom/usb/chip_usb_dw_wrapper.h>
 #include <esp32s2/rom/usb/usb_persist.h>
+#else
+#ifndef USBDC_PERSIST_ENA
+#define USBDC_PERSIST_ENA (1<<31)
+#endif
+
+#ifndef USBDC_BOOT_DFU
+#define USBDC_BOOT_DFU (1<<30)
+#endif
+#endif // IDF v4.3+
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <soc/gpio_periph.h>
@@ -55,11 +66,19 @@ static void IRAM_ATTR usb_shutdown_hook(void)
         periph_module_disable(PERIPH_TIMG1_MODULE);
         if (cdc_line_state == LINE_STATE_REQUEST_DOWNLOAD)
         {
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
             chip_usb_set_persist_flags(USBDC_PERSIST_ENA);
+#else
+            USB_WRAP.date.val = USBDC_PERSIST_ENA;
+#endif // IDF v4.3+
         }
         else
         {
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
             chip_usb_set_persist_flags(USBDC_BOOT_DFU);
+#else
+            USB_WRAP.date.val = USBDC_BOOT_DFU;
+#endif // IDF v4.3+
             periph_module_disable(PERIPH_TIMG0_MODULE);
         }
 
