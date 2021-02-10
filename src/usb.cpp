@@ -122,7 +122,11 @@ void init_usb_subsystem(bool external_phy)
 static void usb_device_task(void *param)
 {
     ESP_LOGI(TAG, "Initializing TinyUSB");
-    ESP_ERROR_CHECK(tusb_init());
+    if (!tusb_init())
+    {
+        ESP_LOGE(TAG, "TinyUSB init failed!");
+        abort();
+    }
 
     ESP_LOGI(TAG, "TinyUSB Task (%s) starting execution",
              CONFIG_TINYUSB_TASK_NAME);
