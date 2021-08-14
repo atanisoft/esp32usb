@@ -15,9 +15,9 @@
 
 #include "sdkconfig.h"
 
-// if TinyUSB debug is enabled set the local log level higher than any of the
+// if Esp32USB debug is enabled set the local log level higher than any of the
 // pre-defined log levels.
-#if CONFIG_TINYUSB_DEBUG
+#if CONFIG_ESPUSB_DEBUG
 #define LOG_LOCAL_LEVEL 0xFF
 #endif
 
@@ -46,7 +46,7 @@
 
 static constexpr const char * const TAG = "USB";
 
-#if CONFIG_TINYUSB_CDC_ENABLED
+#if CONFIG_ESPUSB_CDC
 void init_usb_cdc();
 #endif
 
@@ -112,7 +112,7 @@ void init_usb_subsystem(bool external_phy)
         }
     }
 
-#if CONFIG_TINYUSB_CDC_ENABLED
+#if CONFIG_ESPUSB_CDC
     init_usb_cdc();
 #endif
 
@@ -121,15 +121,15 @@ void init_usb_subsystem(bool external_phy)
 
 static void usb_device_task(void *param)
 {
-    ESP_LOGI(TAG, "Initializing TinyUSB");
+    ESP_LOGV(TAG, "Initializing TinyUSB");
     if (!tusb_init())
     {
-        ESP_LOGE(TAG, "TinyUSB init failed!");
+        ESP_LOGE(TAG, "Failed to initialize TinyUSB stack!");
         abort();
     }
 
-    ESP_LOGI(TAG, "TinyUSB Task (%s) starting execution",
-             CONFIG_TINYUSB_TASK_NAME);
+    ESP_LOGV(TAG, "EspUSB Task (%s) starting execution",
+             CONFIG_ESPUSB_TASK_NAME);
     while (1)
     {
         tud_task();
@@ -137,23 +137,23 @@ static void usb_device_task(void *param)
 }
 
 // sanity check that the user did not define the task priority too low.
-static_assert(CONFIG_TINYUSB_TASK_PRIORITY > ESP_TASK_MAIN_PRIO,
-              "TinyUSB task must have a higher priority than the app_main task.");
+static_assert(CONFIG_ESPUSB_TASK_PRIORITY > ESP_TASK_MAIN_PRIO,
+              "EspUSB task must have a higher priority than the app_main task.");
 
 void start_usb_task()
 {
-    if (xTaskCreate(usb_device_task, CONFIG_TINYUSB_TASK_NAME,
-                    CONFIG_TINYUSB_TASK_STACK_SIZE, nullptr,
-                    CONFIG_TINYUSB_TASK_PRIORITY, nullptr) != pdPASS)
+    if (xTaskCreate(usb_device_task, CONFIG_ESPUSB_TASK_NAME,
+                    CONFIG_ESPUSB_TASK_STACK_SIZE, nullptr,
+                    CONFIG_ESPUSB_TASK_PRIORITY, nullptr) != pdPASS)
     {
         ESP_LOGE(TAG, "Failed to create task for USB.");
         abort();
     }
-    ESP_LOGI(TAG, "Created TinyUSB task: %s", CONFIG_TINYUSB_TASK_NAME);
+    ESP_LOGI(TAG, "Created EspUSB task: %s", CONFIG_ESPUSB_TASK_NAME);
 }
 
 // When CDC is enabled set the default descriptor to use ACM mode.
-#if CONFIG_TINYUSB_CDC_ENABLED
+#if CONFIG_ESPUSB_CDC
 #define USB_DEVICE_CLASS TUSB_CLASS_MISC
 #define USB_DEVICE_SUBCLASS MISC_SUBCLASS_COMMON
 #define USB_DEVICE_PROTOCOL MISC_PROTOCOL_IAD
@@ -176,11 +176,11 @@ static tusb_desc_device_t s_descriptor =
     .bDeviceSubClass    = USB_DEVICE_SUBCLASS,
     .bDeviceProtocol    = USB_DEVICE_PROTOCOL,
     .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
-    .idVendor           = CONFIG_TINYUSB_USB_VENDOR_ID,
+    .idVendor           = CONFIG_ESPUSB_USB_VENDOR_ID,
     .idProduct          = (0x4000 | _PID_MAP(CDC, 0) | _PID_MAP(MSC, 1) |
                            _PID_MAP(HID, 2) | _PID_MAP(MIDI, 3) |
                            _PID_MAP(VENDOR, 4) | _PID_MAP(DFU_RT, 5)),
-    .bcdDevice          = CONFIG_TINYUSB_DESC_BCDDEVICE,
+    .bcdDevice          = CONFIG_ESPUSB_DESC_BCDDEVICE,
     .iManufacturer      = USB_DESC_MANUFACTURER,
     .iProduct           = USB_DESC_PRODUCT,
     .iSerialNumber      = USB_DESC_SERIAL_NUMBER,
@@ -237,24 +237,24 @@ typedef enum
 /// USB Interface indexes.
 typedef enum
 {
-#if CONFIG_TINYUSB_CDC_ENABLED
+#if CONFIG_ESPUSB_CDC
     ITF_NUM_CDC = 0,
     ITF_NUM_CDC_DATA,
 #endif
-#if CONFIG_TINYUSB_MSC_ENABLED
+#if CONFIG_ESPUSB_MSC
     ITF_NUM_MSC,
 #endif
-#if CONFIG_TINYUSB_HID_ENABLED
+#if CONFIG_ESPUSB_HID
     ITF_NUM_HID,
 #endif
-#if CONFIG_TINYUSB_MIDI_ENABLED
+#if CONFIG_ESPUSB_MIDI
     ITF_NUM_MIDI,
     ITF_NUM_MIDI_STREAMING,
 #endif
-#if CONFIG_TINYUSB_VENDOR_ENABLED 
+#if CONFIG_ESPUSB_VENDOR
     ITF_NUM_VENDOR,
 #endif
-#if CONFIG_TINYUSB_DFU_ENABLED 
+#if CONFIG_ESPUSB_DFU
     ITF_NUM_DFU_RT,
 #endif
     ITF_NUM_TOTAL
@@ -263,25 +263,24 @@ typedef enum
 /// Total size of the USB device descriptor configuration data.
 static constexpr uint16_t USB_DESCRIPTORS_CONFIG_TOTAL_LEN =
     TUD_CONFIG_DESC_LEN +
-    (CONFIG_TINYUSB_CDC_ENABLED * TUD_CDC_DESC_LEN) +
-    (CONFIG_TINYUSB_MSC_ENABLED * TUD_MSC_DESC_LEN) +
-    (CONFIG_TINYUSB_HID_ENABLED * TUD_HID_DESC_LEN) +
-    (CONFIG_TINYUSB_VENDOR_ENABLED * TUD_VENDOR_DESC_LEN) +
-    (CONFIG_TINYUSB_MIDI_ENABLED * TUD_MIDI_DESC_LEN) +
-    (CONFIG_TINYUSB_DFU_ENABLED * TUD_DFU_RT_DESC_LEN);
+    (CONFIG_ESPUSB_CDC * TUD_CDC_DESC_LEN) +
+    (CONFIG_ESPUSB_MSC * TUD_MSC_DESC_LEN) +
+    (CONFIG_ESPUSB_HID * TUD_HID_DESC_LEN) +
+    (CONFIG_ESPUSB_VENDOR * TUD_VENDOR_DESC_LEN) +
+    (CONFIG_ESPUSB_MIDI * TUD_MIDI_DESC_LEN) +
+    (CONFIG_ESPUSB_DFU * TUD_DFU_RT_DESC_LEN);
 
-#if CONFIG_TINYUSB_CDC_ENABLED
-static_assert(CONFIG_TINYUSB_CDC_FIFO_SIZE == 64, "CDC FIFO size must be 64");
+#if CONFIG_ESPUSB_CDC
+static_assert(CONFIG_ESPUSB_CDC_FIFO_SIZE == 64, "CDC FIFO size must be 64");
 #endif
-#if CONFIG_TINYUSB_MSC_ENABLED
-static_assert(CONFIG_TINYUSB_MSC_FIFO_SIZE == 64, "MSC FIFO size must be 64");
+#if CONFIG_ESPUSB_MSC
+static_assert(CONFIG_ESPUSB_MSC_FIFO_SIZE == 64, "MSC FIFO size must be 64");
 #endif
-#if CONFIG_TINYUSB_VENDOR_ENABLED
-static_assert(CONFIG_TINYUSB_VENDOR_FIFO_SIZE == 64
-            , "Vendor FIFO size must be 64");
+#if CONFIG_ESPUSB_VENDOR
+static_assert(CONFIG_ESPUSB_VENDOR_FIFO_SIZE == 64, "Vendor FIFO size must be 64");
 #endif
-#if CONFIG_TINYUSB_MIDI_ENABLED
-static_assert(CONFIG_TINYUSB_MIDI_FIFO_SIZE == 64
+#if CONFIG_ESPUSB_MIDI
+static_assert(CONFIG_ESPUSB_MIDI_FIFO_SIZE == 64
             , "MIDI FIFO size must be 64");
 #endif
 
@@ -291,33 +290,33 @@ uint8_t const desc_configuration[USB_DESCRIPTORS_CONFIG_TOTAL_LEN] =
     TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0,
                           USB_DESCRIPTORS_CONFIG_TOTAL_LEN,
                           TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP,
-                          CONFIG_TINYUSB_MAX_POWER_USAGE),
-#if CONFIG_TINYUSB_CDC_ENABLED
+                          CONFIG_ESPUSB_MAX_POWER_USAGE),
+#if CONFIG_ESPUSB_CDC
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, USB_DESC_CDC, ENDPOINT_NOTIF, 8,
                        ENDPOINT_CDC_OUT, ENDPOINT_CDC_IN,
-                       CONFIG_TINYUSB_CDC_FIFO_SIZE),
+                       CONFIG_ESPUSB_CDC_FIFO_SIZE),
 #endif
-#if CONFIG_TINYUSB_MSC_ENABLED
+#if CONFIG_ESPUSB_MSC
     TUD_MSC_DESCRIPTOR(ITF_NUM_MSC, USB_DESC_MSC, ENDPOINT_MSC_OUT,
-                       ENDPOINT_MSC_IN, CONFIG_TINYUSB_MSC_FIFO_SIZE),
+                       ENDPOINT_MSC_IN, CONFIG_ESPUSB_MSC_FIFO_SIZE),
 #endif
-#if CONFIG_TINYUSB_HID_ENABLED
+#if CONFIG_ESPUSB_HID
     TUD_HID_DESCRIPTOR(ITF_NUM_HID, USB_DESC_HID, HID_PROTOCOL_NONE,
                        sizeof(desc_hid_report), ENDPOINT_HID_IN,
-                       CONFIG_TINYUSB_HID_BUFSIZE, 10),
+                       CONFIG_ESPUSB_HID_BUFSIZE, 10),
 #endif
-#if CONFIG_TINYUSB_VENDOR_ENABLED
+#if CONFIG_ESPUSB_VENDOR
     TUD_VENDOR_DESCRIPTOR(ITF_NUM_VENDOR, USB_DESC_VENDOR, ENDPOINT_VENDOR_OUT,
-                          ENDPOINT_VENDOR_IN, CONFIG_TINYUSB_VENDOR_FIFO_SIZE),
+                          ENDPOINT_VENDOR_IN, CONFIG_ESPUSB_VENDOR_FIFO_SIZE),
 #endif
-#if CONFIG_TINYUSB_MIDI_ENABLED
+#if CONFIG_ESPUSB_MIDI
     TUD_MIDI_DESCRIPTOR(ITF_NUM_MIDI, USB_DESC_MIDI, ENDPOINT_MIDI_OUT,
-                        ENDPOINT_MIDI_IN, CONFIG_TINYUSB_MIDI_FIFO_SIZE),
+                        ENDPOINT_MIDI_IN, CONFIG_ESPUSB_MIDI_FIFO_SIZE),
 #endif
-#if CONFIG_TINYUSB_DFU_ENABLED
+#if CONFIG_ESPUSB_DFU
     TUD_DFU_RT_DESCRIPTOR(ITF_NUM_DFU_RT, USB_DESC_DFU, 0x0d,
-                          CONFIG_TINYUSB_DFU_DISCONNECT_DELAY,
-                          CONFIG_TINYUSB_DFU_BUFSIZE),
+                          CONFIG_ESPUSB_DFU_DISCONNECT_DELAY,
+                          CONFIG_ESPUSB_DFU_BUFSIZE),
 #endif
 };
 
@@ -426,7 +425,7 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
     return _desc_str;
 }
 
-#if CONFIG_USB_HID_ENABLED
+#if CONFIG_ESPUSB_HID
 
 // HID Report Descriptor
 static uint8_t const desc_hid_report[] =
@@ -441,16 +440,16 @@ uint8_t const *tud_hid_descriptor_report_cb(void)
     return desc_hid_report;
 }
 
-#endif // CONFIG_USB_HID_ENABLED
+#endif // CONFIG_ESPUSB_HID
 
 
-#if CONFIG_USB_DFU_ENABLED
+#if CONFIG_ESPUSB_DFU
 // Invoked when the DFU Runtime mode is requested
 void tud_dfu_rt_reboot_to_dfu(void)
 {
     REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
     SET_PERI_REG_MASK(RTC_CNTL_OPTIONS0_REG, RTC_CNTL_SW_PROCPU_RST);
 }
-#endif // CONFIG_USB_DFU_ENABLED
+#endif // CONFIG_ESPUSB_DFU
 
 } // extern "C"

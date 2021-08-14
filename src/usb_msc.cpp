@@ -14,7 +14,7 @@
 
 #include "usb.h"
 
-#if CONFIG_TINYUSB_MSC_ENABLED
+#if CONFIG_ESPUSB_MSC
 
 // these can be used to fine tune the debug log levels for hex dump of sector
 // data within the read callback.
@@ -187,27 +187,27 @@ typedef struct
     const esp_partition_t *partition;
     std::string printable_name;
     uint8_t root_dir_sector;
-#if CONFIG_TINYUSB_MSC_LONG_FILENAMES
+#if CONFIG_ESPUSB_MSC_LONG_FILENAMES
     std::vector<fat_long_filename_t> lfn_parts;
-#endif // CONFIG_TINYUSB_MSC_LONG_FILENAMES
+#endif // CONFIG_ESPUSB_MSC_LONG_FILENAMES
 } fat_file_entry_t;
 
-static_assert((CONFIG_TINYUSB_MSC_VDISK_FILE_COUNT & 15) == 0,
+static_assert((CONFIG_ESPUSB_MSC_VDISK_FILE_COUNT & 15) == 0,
               "Number of files on the virtual disk must be a multiple of 16");
 
 static constexpr uint16_t DIRENTRIES_PER_SECTOR =
-    (CONFIG_TINYUSB_MSC_VDISK_SECTOR_SIZE / sizeof(fat_direntry_t));
+    (CONFIG_ESPUSB_MSC_VDISK_SECTOR_SIZE / sizeof(fat_direntry_t));
 static constexpr uint16_t SECTORS_PER_FAT_TABLE = 
-    ((CONFIG_TINYUSB_MSC_VDISK_SECTOR_COUNT * 2) +
-     (CONFIG_TINYUSB_MSC_VDISK_SECTOR_SIZE - 1))
-    / CONFIG_TINYUSB_MSC_VDISK_SECTOR_SIZE;
+    ((CONFIG_ESPUSB_MSC_VDISK_SECTOR_COUNT * 2) +
+     (CONFIG_ESPUSB_MSC_VDISK_SECTOR_SIZE - 1))
+    / CONFIG_ESPUSB_MSC_VDISK_SECTOR_SIZE;
 
 static constexpr uint16_t FAT_COPY_0_FIRST_SECTOR =
-    CONFIG_TINYUSB_MSC_VDISK_RESERVED_SECTOR_COUNT;
+    CONFIG_ESPUSB_MSC_VDISK_RESERVED_SECTOR_COUNT;
 static constexpr uint16_t FAT_COPY_1_FIRST_SECTOR =
     FAT_COPY_0_FIRST_SECTOR + SECTORS_PER_FAT_TABLE;
 static constexpr uint16_t ROOT_DIR_SECTOR_COUNT = 
-    (CONFIG_TINYUSB_MSC_VDISK_FILE_COUNT / DIRENTRIES_PER_SECTOR);
+    (CONFIG_ESPUSB_MSC_VDISK_FILE_COUNT / DIRENTRIES_PER_SECTOR);
 static constexpr uint16_t ROOT_DIR_FIRST_SECTOR =
     FAT_COPY_1_FIRST_SECTOR + SECTORS_PER_FAT_TABLE;
 static constexpr uint16_t FILE_CONTENT_FIRST_SECTOR =
@@ -216,7 +216,7 @@ static constexpr uint16_t FILE_CONTENT_FIRST_SECTOR =
 /// Special marker for FAT cluster end of file (FAT-16).
 static constexpr uint16_t FAT_CLUSTER_END_OF_FILE = 0xFFFF;
 
-#if CONFIG_TINYUSB_MSC_LONG_FILENAMES
+#if CONFIG_ESPUSB_MSC_LONG_FILENAMES
 /// Maximum length of filename.
 /// NOTE: this excludes the period between the filename and extension.
 static constexpr uint8_t MAX_FILENAME_LENGTH = 38;
@@ -224,7 +224,7 @@ static constexpr uint8_t MAX_FILENAME_LENGTH = 38;
 /// Maximum length of filename.
 /// NOTE: this excludes the period between the filename and extension.
 static constexpr uint8_t MAX_FILENAME_LENGTH = 11;
-#endif // CONFIG_TINYUSB_MSC_LONG_FILENAMES
+#endif // CONFIG_ESPUSB_MSC_LONG_FILENAMES
 
 /// Flag for @ref bios_boot_sector_t boot_sig field indicating that the
 /// volume_label and fs_identifier fields are populated.
@@ -241,12 +241,12 @@ static bios_boot_sector_t s_bios_boot_sector =
 {
     .jump_instruction = {0xEB, 0x3C, 0x90},
     .oem_info = {'M','S','D','O','S','5','.','0'},
-    .sector_size = CONFIG_TINYUSB_MSC_VDISK_SECTOR_SIZE,
+    .sector_size = CONFIG_ESPUSB_MSC_VDISK_SECTOR_SIZE,
     .sectors_per_cluster = 1,
-    .reserved_sectors = CONFIG_TINYUSB_MSC_VDISK_RESERVED_SECTOR_COUNT,
+    .reserved_sectors = CONFIG_ESPUSB_MSC_VDISK_RESERVED_SECTOR_COUNT,
     .fat_copies = 2,
-    .root_directory_entries = CONFIG_TINYUSB_MSC_VDISK_FILE_COUNT,
-    .sector_count_16 = CONFIG_TINYUSB_MSC_VDISK_SECTOR_COUNT,
+    .root_directory_entries = CONFIG_ESPUSB_MSC_VDISK_FILE_COUNT,
+    .sector_count_16 = CONFIG_ESPUSB_MSC_VDISK_SECTOR_COUNT,
     .media_descriptor = 0xF8,
     .fat_sectors = SECTORS_PER_FAT_TABLE,
     .sectors_per_track = 1,
@@ -275,9 +275,9 @@ static esp_ota_handle_t ota_update_handle = 0;
 const esp_partition_t *ota_update_partition = nullptr;
 static size_t ota_bytes_received;
 
-static const char * const s_vendor_id = CONFIG_TINYUSB_MSC_VENDOR_ID;
-static const char * const s_product_id = CONFIG_TINYUSB_MSC_PRODUCT_ID;
-static const char * const s_product_rev = CONFIG_TINYUSB_MSC_PRODUCT_REVISION;
+static const char * const s_vendor_id = CONFIG_ESPUSB_MSC_VENDOR_ID;
+static const char * const s_product_id = CONFIG_ESPUSB_MSC_PRODUCT_ID;
+static const char * const s_product_rev = CONFIG_ESPUSB_MSC_PRODUCT_REVISION;
 
 /// Utility function to copy a string into a target field using spaces to pad
 /// to a set length.
@@ -352,11 +352,11 @@ void configure_virtual_disk(std::string label, uint32_t serial_number)
              "fat1 sector start: %d\n"
              "root directory sector start: %d (%d entries, %d per sector)\n"
              "first file sector start: %d\n"
-#if CONFIG_TINYUSB_MSC_LONG_FILENAMES
+#if CONFIG_ESPUSB_MSC_LONG_FILENAMES
              "long filenames: enabled"
 #else
              "long filenames: disabled"
-#endif // CONFIG_TINYUSB_MSC_LONG_FILENAMES
+#endif // CONFIG_ESPUSB_MSC_LONG_FILENAMES
            , s_bios_boot_sector.volume_label
            , sector_count
            , (sector_count * s_bios_boot_sector.sector_size)
@@ -366,7 +366,7 @@ void configure_virtual_disk(std::string label, uint32_t serial_number)
            , FAT_COPY_0_FIRST_SECTOR
            , FAT_COPY_1_FIRST_SECTOR
            , ROOT_DIR_FIRST_SECTOR
-           , CONFIG_TINYUSB_MSC_VDISK_FILE_COUNT
+           , CONFIG_ESPUSB_MSC_VDISK_FILE_COUNT
            , DIRENTRIES_PER_SECTOR
            , FILE_CONTENT_FIRST_SECTOR
     );
@@ -421,7 +421,7 @@ esp_err_t register_virtual_file(const std::string name, const char *content,
                                 const esp_partition_t *partition)
 {
     // one directory entry is reserved for the volume label
-    if (s_root_directory.size() > (CONFIG_TINYUSB_MSC_VDISK_FILE_COUNT - 1))
+    if (s_root_directory.size() > (CONFIG_ESPUSB_MSC_VDISK_FILE_COUNT - 1))
     {
         ESP_LOGE(TAG
                , "Maximum file count has been reached, rejecting new file!");
@@ -482,7 +482,7 @@ esp_err_t register_virtual_file(const std::string name, const char *content,
         }
         file.printable_name.assign(std::move(base_name)).append(".").append(extension);
     }
-#if CONFIG_TINYUSB_MSC_LONG_FILENAMES
+#if CONFIG_ESPUSB_MSC_LONG_FILENAMES
     // if the filename is longer than the maximum allowed for 8.3 format
     // convert it to a long filename instead
     if (file.printable_name.length() > 12)
@@ -543,7 +543,7 @@ esp_err_t register_virtual_file(const std::string name, const char *content,
         file.lfn_parts[0].sequence |= 0x40; // mark as last in sequence
         ESP_LOGI(TAG, "Created %d name fragments", file.lfn_parts.size());
     }
-#endif // CONFIG_TINYUSB_MSC_LONG_FILENAMES
+#endif // CONFIG_ESPUSB_MSC_LONG_FILENAMES
     file.content = content;
     file.partition = partition;
     file.size = size;
@@ -571,7 +571,7 @@ esp_err_t register_virtual_file(const std::string name, const char *content,
     for (uint8_t index = 0; index < ROOT_DIR_SECTOR_COUNT; index++)
     {
         uint8_t entries_needed = 1;
-#if CONFIG_TINYUSB_MSC_LONG_FILENAMES
+#if CONFIG_ESPUSB_MSC_LONG_FILENAMES
         // if the filename is longer than 12 characters (including period)
         // calculate the number of additional entries required. Each fragment
         // can hold up to 13 characters.
@@ -583,7 +583,7 @@ esp_err_t register_virtual_file(const std::string name, const char *content,
             entries_needed += (file.printable_name.length() > 13);
             entries_needed += (file.printable_name.length() > 26);
         }
-#endif
+#endif // CONFIG_ESPUSB_MSC_LONG_FILENAMES
         if (s_root_directory_entry_usage[index] + entries_needed < DIRENTRIES_PER_SECTOR)
         {
             s_root_directory_entry_usage[index] += entries_needed;
@@ -812,7 +812,7 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
             }
             ESP_LOGD(TAG, "Creating directory entry for: %s",
                      file.printable_name.c_str());
-#if CONFIG_TINYUSB_MSC_LONG_FILENAMES
+#if CONFIG_ESPUSB_MSC_LONG_FILENAMES
             // add directory entries for name fragments.
             if (file.lfn_parts.size())
             {
@@ -824,7 +824,7 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
                     d++;
                 }
             }
-#endif // CONFIG_TINYUSB_MSC_LONG_FILENAMES
+#endif // CONFIG_ESPUSB_MSC_LONG_FILENAMES
             // note this will clear the file extension.
             space_padded_memcpy(d->name, file.name, 11);
             space_padded_memcpy(d->ext, file.ext, 3);
@@ -1084,4 +1084,4 @@ int32_t tud_msc_scsi_cb (uint8_t lun, uint8_t const scsi_cmd[16], void* buffer,
 
 } // extern "C"
 
-#endif // CONFIG_TINYUSB_MSC_ENABLED
+#endif // CONFIG_ESPUSB_MSC

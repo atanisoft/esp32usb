@@ -17,18 +17,16 @@
 #include <driver/periph_ctrl.h>
 #include <esp_idf_version.h>
 #include <esp_log.h>
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
+#if CONFIG_IDF_TARGET_ESP32S2
 #include <esp32s2/rom/usb/chip_usb_dw_wrapper.h>
 #include <esp32s2/rom/usb/usb_persist.h>
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include <esp32s3/rom/usb/chip_usb_dw_wrapper.h>
+#include <esp32s3/rom/usb/usb_persist.h>
 #else
-#ifndef USBDC_PERSIST_ENA
-#define USBDC_PERSIST_ENA (1<<31)
+#error Unsupported architecture.
 #endif
 
-#ifndef USBDC_BOOT_DFU
-#define USBDC_BOOT_DFU (1<<30)
-#endif
-#endif // IDF v4.3+
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <soc/gpio_periph.h>
@@ -39,14 +37,14 @@
 /// Tag used for all logging.
 static constexpr const char * const TAG = "USB:CDC";
 
-#if CONFIG_TINYUSB_CDC_ENABLED
+#if CONFIG_ESPUSB_CDC
 
 /// Current state of the USB CDC interface.
 static esp_line_state_t cdc_line_state = LINE_STATE_DISCONNECTED;
 
 /// Maximum number of ticks to allow for TX to complete before giving up.
 static constexpr TickType_t WRITE_TIMEOUT_TICKS =
-    pdMS_TO_TICKS(CONFIG_TINYUSB_CDC_WRITE_FLUSH_TIMEOUT);
+    pdMS_TO_TICKS(CONFIG_ESPUSB_CDC_WRITE_FLUSH_TIMEOUT);
 
 /// System shutdown hook used for flagging that the restart should go into a
 /// download mode rather than normal startup mode.
@@ -66,19 +64,11 @@ static void IRAM_ATTR usb_shutdown_hook(void)
         periph_module_disable(PERIPH_TIMG1_MODULE);
         if (cdc_line_state == LINE_STATE_REQUEST_DOWNLOAD)
         {
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
             chip_usb_set_persist_flags(USBDC_PERSIST_ENA);
-#else
-            USB_WRAP.date.val = USBDC_PERSIST_ENA;
-#endif // IDF v4.3+
         }
         else
         {
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
             chip_usb_set_persist_flags(USBDC_BOOT_DFU);
-#else
-            USB_WRAP.date.val = USBDC_BOOT_DFU;
-#endif // IDF v4.3+
             periph_module_disable(PERIPH_TIMG0_MODULE);
         }
 
@@ -245,4 +235,4 @@ void tud_cdc_line_state_cb(uint8_t itf, bool dtr, bool rts)
 
 } // extern "C"
 
-#endif // CONFIG_TINYUSB_CDC_ENABLED
+#endif // CONFIG_USBUSB_CDC

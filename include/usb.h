@@ -61,7 +61,6 @@ typedef enum
     USB_DESC_MAX_COUNT
 } esp_usb_descriptor_index_t;
 
-#if CONFIG_TINYUSB_HID_ENABLED
 /// USB HID device report types.
 typedef enum
 {
@@ -71,7 +70,6 @@ typedef enum
     /// The reported event is from a mouse.
     REPORT_ID_MOUSE
 } esp_usb_hid_report_t;
-#endif
 
 /// USB CDC line state.
 typedef enum
@@ -111,7 +109,7 @@ typedef enum
 /// @param external_phy should be left as false.
 void init_usb_subsystem(bool external_phy = false);
 
-/// Creates a background task for TinyUSB processing of USB packets.
+/// Creates a background task for EspUSB (TinyUSB) processing of USB packets.
 ///
 /// NOTE: The task uses 4096 bytes for the stack and runs at the TCP/IP task
 /// priority.
