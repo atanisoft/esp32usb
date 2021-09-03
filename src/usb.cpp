@@ -26,14 +26,15 @@
 #include <esp_idf_version.h>
 #include <esp_log.h>
 #include <esp_task.h>
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
+#if CONFIG_IDF_TARGET_ESP32S2
 #include <esp32s2/rom/usb/chip_usb_dw_wrapper.h>
 #include <esp32s2/rom/usb/usb_persist.h>
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include <esp32s3/rom/usb/chip_usb_dw_wrapper.h>
+#include <esp32s3/rom/usb/usb_persist.h>
 #else
-#ifndef USBDC_PERSIST_ENA
-#define USBDC_PERSIST_ENA (1<<31)
+#error Unsupported architecture.
 #endif
-#endif // IDF v4.3+
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <hal/usb_hal.h>
@@ -46,17 +47,12 @@
 
 static constexpr const char * const TAG = "USB";
 
-#if CONFIG_ESPUSB_CDC
 void init_usb_cdc();
-#endif
 
 void init_usb_subsystem(bool external_phy)
 {
     ESP_LOGI(TAG, "Initializing USB peripheral");
-#if ESP_IDF_VERSION > ESP_IDF_VERSION_VAL(4,3,0)
     if ((chip_usb_get_persist_flags() & USBDC_PERSIST_ENA) == USBDC_PERSIST_ENA)
-#else
-    if (USB_WRAP.date.val == USBDC_PERSIST_ENA)
     {
         // Enable USB/IO_MUX peripheral reset on next reboot.
         REG_CLR_BIT(RTC_CNTL_USB_CONF_REG, RTC_CNTL_IO_MUX_RESET_DISABLE);
@@ -68,7 +64,6 @@ void init_usb_subsystem(bool external_phy)
         periph_module_reset(PERIPH_USB_MODULE);
         periph_module_enable(PERIPH_USB_MODULE);
     }
-#endif // IDF v4.3+
 
     usb_hal_context_t hal;
     hal.use_external_phy = external_phy;
@@ -81,14 +76,14 @@ void init_usb_subsystem(bool external_phy)
     }
     else
     {
-        ESP_LOGV(TAG, "Setting GPIO %d drive to %d", USBPHY_DM_NUM
-               , GPIO_DRIVE_CAP_3);
-        gpio_set_drive_capability((gpio_num_t)USBPHY_DM_NUM
-                                , (gpio_drive_cap_t)GPIO_DRIVE_CAP_3);
-        ESP_LOGV(TAG, "Setting GPIO %d drive to %d", USBPHY_DP_NUM
-               , GPIO_DRIVE_CAP_3);
-        gpio_set_drive_capability((gpio_num_t)USBPHY_DP_NUM
-                                , (gpio_drive_cap_t)GPIO_DRIVE_CAP_3);
+        ESP_LOGV(TAG, "Setting GPIO %d drive to %d", USBPHY_DM_NUM,
+                 GPIO_DRIVE_CAP_3);
+        gpio_set_drive_capability((gpio_num_t)USBPHY_DM_NUM,
+                                  (gpio_drive_cap_t)GPIO_DRIVE_CAP_3);
+        ESP_LOGV(TAG, "Setting GPIO %d drive to %d", USBPHY_DP_NUM,
+                 GPIO_DRIVE_CAP_3);
+        gpio_set_drive_capability((gpio_num_t)USBPHY_DP_NUM,
+                                  (gpio_drive_cap_t)GPIO_DRIVE_CAP_3);
     }
 
     for (const usb_iopin_dsc_t* iopin = usb_periph_iopins; iopin->pin != -1;

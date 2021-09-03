@@ -34,6 +34,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/timers.h>
 #include <vector>
+#include "psram_allocator.h"
 
 static constexpr const char * const TAG = "USB:MSC";
 
@@ -188,7 +189,8 @@ typedef struct
     std::string printable_name;
     uint8_t root_dir_sector;
 #if CONFIG_ESPUSB_MSC_LONG_FILENAMES
-    std::vector<fat_long_filename_t> lfn_parts;
+    std::vector<fat_long_filename_t,
+                PSRAMAllocator<fat_long_filename_t>> lfn_parts;
 #endif // CONFIG_ESPUSB_MSC_LONG_FILENAMES
 } fat_file_entry_t;
 
@@ -263,7 +265,9 @@ static bios_boot_sector_t s_bios_boot_sector =
     .signature = {0x55, 0xaa}
 };
 
-static std::vector<fat_file_entry_t> s_root_directory;
+static std::vector<fat_file_entry_t,
+                   PSRAMAllocator<fat_file_entry_t>> s_root_directory;
+
 static uint8_t s_root_directory_entry_usage[ROOT_DIR_SECTOR_COUNT];
 
 static xTimerHandle msc_write_timer;
@@ -353,22 +357,22 @@ void configure_virtual_disk(std::string label, uint32_t serial_number)
              "root directory sector start: %d (%d entries, %d per sector)\n"
              "first file sector start: %d\n"
 #if CONFIG_ESPUSB_MSC_LONG_FILENAMES
-             "long filenames: enabled"
+             "long filenames: enabled",
 #else
-             "long filenames: disabled"
+             "long filenames: disabled",
 #endif // CONFIG_ESPUSB_MSC_LONG_FILENAMES
-           , s_bios_boot_sector.volume_label
-           , sector_count
-           , (sector_count * s_bios_boot_sector.sector_size)
-           , s_bios_boot_sector.reserved_sectors
-           , s_bios_boot_sector.fat_sectors
-           , s_bios_boot_sector.fat_sectors * s_bios_boot_sector.sector_size
-           , FAT_COPY_0_FIRST_SECTOR
-           , FAT_COPY_1_FIRST_SECTOR
-           , ROOT_DIR_FIRST_SECTOR
-           , CONFIG_ESPUSB_MSC_VDISK_FILE_COUNT
-           , DIRENTRIES_PER_SECTOR
-           , FILE_CONTENT_FIRST_SECTOR
+             s_bios_boot_sector.volume_label,
+             sector_count,
+             (sector_count * s_bios_boot_sector.sector_size),
+             s_bios_boot_sector.reserved_sectors,
+             s_bios_boot_sector.fat_sectors,
+             s_bios_boot_sector.fat_sectors * s_bios_boot_sector.sector_size,
+             FAT_COPY_0_FIRST_SECTOR,
+             FAT_COPY_1_FIRST_SECTOR,
+             ROOT_DIR_FIRST_SECTOR,
+             CONFIG_ESPUSB_MSC_VDISK_FILE_COUNT,
+             DIRENTRIES_PER_SECTOR,
+             FILE_CONTENT_FIRST_SECTOR
     );
 
     // convert fields to little endian
@@ -408,12 +412,10 @@ void configure_virtual_disk(std::string label, uint32_t serial_number)
     {
         current_chip_id = ESP_CHIP_ID_ESP32S2;
     }
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
     else if (chip_info.model == CHIP_ESP32S3)
     {
         current_chip_id = ESP_CHIP_ID_ESP32S3;
     }
-#endif // IDF v4.3+
 }
 
 esp_err_t register_virtual_file(const std::string name, const char *content,
@@ -423,8 +425,8 @@ esp_err_t register_virtual_file(const std::string name, const char *content,
     // one directory entry is reserved for the volume label
     if (s_root_directory.size() > (CONFIG_ESPUSB_MSC_VDISK_FILE_COUNT - 1))
     {
-        ESP_LOGE(TAG
-               , "Maximum file count has been reached, rejecting new file!");
+        ESP_LOGE(TAG,
+                 "Maximum file count has been reached, rejecting new file!");
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -606,9 +608,9 @@ esp_err_t add_readonly_file_to_virtual_disk(const std::string filename,
     return register_virtual_file(filename, content, size, true, nullptr);
 }
 
-esp_err_t add_partition_to_virtual_disk(const std::string partition_name
-                                      , const std::string filename
-                                      , bool writable)
+esp_err_t add_partition_to_virtual_disk(const std::string partition_name,
+                                        const std::string filename,
+                                        bool writable)
 {
     const esp_partition_t *part =
         esp_partition_find_first(ESP_PARTITION_TYPE_APP,
@@ -623,8 +625,8 @@ esp_err_t add_partition_to_virtual_disk(const std::string partition_name
     }
     if (part != nullptr)
     {
-        return register_virtual_file(filename, nullptr, part->size, writable
-                                   , part);
+        return register_virtual_file(filename, nullptr, part->size, writable,
+                                     part);
     }
     ESP_LOGE(TAG, "Unable to find a partition with name '%s'!"
            , partition_name.c_str());
@@ -649,7 +651,6 @@ esp_err_t add_firmware_to_virtual_disk(const std::string firmware_name)
     }
     return ESP_ERR_NOT_FOUND;
 }
-
 
 // Utility macro for invoking an ESP-IDF API with with failure return code.
 #define ESP_RETURN_ON_ERROR_READ(name, return_code, x)          \
@@ -679,7 +680,6 @@ esp_err_t add_firmware_to_virtual_disk(const std::string firmware_name)
             return return_code;                                 \
         }                                                       \
     }
-
 
 // =============================================================================
 // TinyUSB CALLBACKS
