@@ -755,7 +755,7 @@ int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset,
         for(auto &file : s_root_directory)
         {
             // check if the file is part of this fat cluster
-                // A: file start cluster
+            // A: file start cluster
             // B: file end cluster
             // C: cluster start
             // D: cluster end

@@ -137,9 +137,12 @@ static_assert(CONFIG_ESPUSB_TASK_PRIORITY > ESP_TASK_MAIN_PRIO,
 
 void start_usb_task()
 {
-    if (xTaskCreate(usb_device_task, CONFIG_ESPUSB_TASK_NAME,
-                    CONFIG_ESPUSB_TASK_STACK_SIZE, nullptr,
-                    CONFIG_ESPUSB_TASK_PRIORITY, nullptr) != pdPASS)
+    BaseType_t res =
+        xTaskCreatePinnedToCore(
+            usb_device_task, CONFIG_ESPUSB_TASK_NAME,
+            CONFIG_ESPUSB_TASK_STACK_SIZE, nullptr,
+            CONFIG_ESPUSB_TASK_PRIORITY, nullptr, CONFIG_ESPUSB_TASK_AFFINITY);
+    if (res != pdPASS)
     {
         ESP_LOGE(TAG, "Failed to create task for USB.");
         abort();

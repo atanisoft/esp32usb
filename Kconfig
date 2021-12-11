@@ -2,7 +2,7 @@ menu "TinyUSB (esp32usb)"
     config ESPUSB
         bool "Enable Esp32USB"
         default n
-        depends on IDF_TARGET_ESP32S2
+        depends on IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3
         select FREERTOS_SUPPORT_STATIC_ALLOCATION
         select FREERTOS_USE_AUTHENTIC_INCLUDE_PATHS
         help
@@ -113,11 +113,11 @@ menu "TinyUSB (esp32usb)"
 
         config ESPUSB_MSC_VENDOR_ID
             string "MSC Vendor ID"
-            default "ESP32-S2"
+            default "ESP32"
 
         config ESPUSB_MSC_PRODUCT_ID
             string "MSC Product ID"
-            default "ESP32-S2 Disk"
+            default "ESP32 Disk"
 
         config ESPUSB_MSC_PRODUCT_REVISION
             string "MSC Product revision"
@@ -262,6 +262,27 @@ menu "TinyUSB (esp32usb)"
             help
                 This is the priority for the Esp32USB executor task. It must be
                 at least one priority level higher than the app_main task.
+
+        choice ESPUSB_TASK_AFFINITY
+            bool "Core on which the EspUSB Task will run"
+            default ESPUSB_TASK_AFFINITY_NONE
+            help
+                Select core on which the EspUSB Task will run
+
+            config ESPUSB_TASK_AFFINITY_CORE0
+                bool "Core 0"
+            config ESPUSB_TASK_AFFINITY_CORE1
+                bool "Core 1"
+                depends on IDF_TARGET_ESP32S3
+            config ESPUSB_TASK_AFFINITY_NONE
+                bool "Any"
+        endchoice
+
+        config ESPUSB_TASK_AFFINITY
+            int
+            default 0 if ESPUSB_TASK_AFFINITY_CORE0
+            default 1 if ESPUSB_TASK_AFFINITY_CORE1
+            default -1 if ESPUSB_TASK_AFFINITY_NONE
     endmenu
 
 endmenu
