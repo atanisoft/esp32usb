@@ -245,7 +245,6 @@ menu "TinyUSB (esp32usb)"
     endmenu
 
     menu "Task configuration"
-        depends on ESPUSB_MSC
 
         config ESPUSB_TASK_NAME
             string "Name"
