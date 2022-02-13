@@ -21,6 +21,10 @@
 #define LOG_LOCAL_LEVEL 0xFF
 #endif
 
+#if CONFIG_ESPUSB_HID
+#include <class/hid/hid.h>
+#endif // CONFIG_ESPUSB_HID
+
 #include <driver/gpio.h>
 #include <driver/periph_ctrl.h>
 #include <esp_idf_version.h>
@@ -282,6 +286,23 @@ static_assert(CONFIG_ESPUSB_MIDI_FIFO_SIZE == 64
             , "MIDI FIFO size must be 64");
 #endif
 
+#if CONFIG_ESPUSB_HID
+// HID Report Descriptor
+static uint8_t const desc_hid_report[] =
+{
+  TUD_HID_REPORT_DESC_KEYBOARD( HID_REPORT_ID(REPORT_ID_KEYBOARD         )),
+  TUD_HID_REPORT_DESC_MOUSE   ( HID_REPORT_ID(REPORT_ID_MOUSE            )),
+  TUD_HID_REPORT_DESC_CONSUMER( HID_REPORT_ID(REPORT_ID_CONSUMER_CONTROL )),
+  TUD_HID_REPORT_DESC_GAMEPAD ( HID_REPORT_ID(REPORT_ID_GAMEPAD          ))
+};
+
+// Invoked when received GET HID REPORT DESCRIPTOR request
+uint8_t const *tud_hid_descriptor_report_cb(void)
+{
+    return desc_hid_report;
+}
+#endif // CONFIG_ESPUSB_HID
+
 /// USB device descriptor configuration data.
 uint8_t const desc_configuration[USB_DESCRIPTORS_CONFIG_TOTAL_LEN] =
 {
@@ -299,7 +320,7 @@ uint8_t const desc_configuration[USB_DESCRIPTORS_CONFIG_TOTAL_LEN] =
                        ENDPOINT_MSC_IN, CONFIG_ESPUSB_MSC_FIFO_SIZE),
 #endif
 #if CONFIG_ESPUSB_HID
-    TUD_HID_DESCRIPTOR(ITF_NUM_HID, USB_DESC_HID, HID_PROTOCOL_NONE,
+    TUD_HID_DESCRIPTOR(ITF_NUM_HID, USB_DESC_HID, HID_ITF_PROTOCOL_NONE,
                        sizeof(desc_hid_report), ENDPOINT_HID_IN,
                        CONFIG_ESPUSB_HID_BUFSIZE, 10),
 #endif
@@ -422,24 +443,6 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
 
     return _desc_str;
 }
-
-#if CONFIG_ESPUSB_HID
-
-// HID Report Descriptor
-static uint8_t const desc_hid_report[] =
-{
-    TUD_HID_REPORT_DESC_KEYBOARD(HID_REPORT_ID(REPORT_ID_KEYBOARD),),
-    TUD_HID_REPORT_DESC_MOUSE(HID_REPORT_ID(REPORT_ID_MOUSE),)
-};
-
-// Invoked when received GET HID REPORT DESCRIPTOR request
-uint8_t const *tud_hid_descriptor_report_cb(void)
-{
-    return desc_hid_report;
-}
-
-#endif // CONFIG_ESPUSB_HID
-
 
 #if CONFIG_ESPUSB_DFU
 // Invoked when the DFU Runtime mode is requested
