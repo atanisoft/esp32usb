@@ -297,7 +297,7 @@ static uint8_t const desc_hid_report[] =
 };
 
 // Invoked when received GET HID REPORT DESCRIPTOR request
-uint8_t const *tud_hid_descriptor_report_cb(void)
+const uint8_t *tud_hid_descriptor_report_cb(void)
 {
     return desc_hid_report;
 }
