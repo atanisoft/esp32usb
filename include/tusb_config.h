@@ -46,6 +46,11 @@ extern "C"
 #define CFG_TUSB_MEM_ALIGN __attribute__ ((aligned(4)))
 #endif
 
+// Espressif IDF requires "freertos/" prefix in include path
+#ifndef CFG_TUSB_OS_INC_PATH
+#define CFG_TUSB_OS_INC_PATH    freertos/
+#endif
+
 //--------------------------------------------------------------------
 // ENDPOINT FIFO SIZE CONFIGURATION
 //--------------------------------------------------------------------

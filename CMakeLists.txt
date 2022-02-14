@@ -1,5 +1,7 @@
 idf_component_register(REQUIRES esp_rom app_update spi_flash freertos soc driver)
 
+git_submodule_check(${CMAKE_CURRENT_SOURCE_DIR})
+
 idf_component_get_property( FREERTOS_ORIG_INCLUDE_PATH freertos ORIG_INCLUDE_PATH)
 
 idf_build_get_property(idf_target IDF_TARGET)
@@ -52,5 +54,6 @@ target_sources(${COMPONENT_TARGET} INTERFACE
     "${COMPONENT_DIR}/src/tinyusb/src/host/usbh_control.c"
     "${COMPONENT_DIR}/src/usb.cpp"
     "${COMPONENT_DIR}/src/usb_cdc.cpp"
+    "${COMPONENT_DIR}/src/usb_hid.cpp"
     "${COMPONENT_DIR}/src/usb_msc.cpp"
 )

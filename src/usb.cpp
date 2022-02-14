@@ -31,9 +31,11 @@
 #include <esp_log.h>
 #include <esp_task.h>
 #if CONFIG_IDF_TARGET_ESP32S2
+#include <esp32s2/rom/gpio.h>
 #include <esp32s2/rom/usb/chip_usb_dw_wrapper.h>
 #include <esp32s2/rom/usb/usb_persist.h>
 #elif CONFIG_IDF_TARGET_ESP32S3
+#include <esp32s3/rom/gpio.h>
 #include <esp32s3/rom/usb/chip_usb_dw_wrapper.h>
 #include <esp32s3/rom/usb/usb_persist.h>
 #else
