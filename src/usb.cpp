@@ -386,8 +386,16 @@ void configure_usb_descriptor_str(esp_usb_descriptor_index_t index,
                                   const char *value)
 {
     // truncate the descriptor string (if needed).
-    s_str_descriptor[index].assign(value, MAX_DESCRIPTOR_LEN);
-    ESP_LOGI(TAG, "Setting USB descriptor %d text to: %s", index, value);
+    size_t str_len = strlen(value);
+    if (str_len > MAX_DESCRIPTOR_LEN)
+    {
+        ESP_LOGE(TAG, "USB descriptor(%d) text will be truncated (%zu > %zu)",
+                 index, str_len, MAX_DESCRIPTOR_LEN);
+        str_len = MAX_DESCRIPTOR_LEN;
+    }
+    s_str_descriptor[index].assign(value, str_len);
+    ESP_LOGI(TAG, "USB descriptor(%d) text:%s", index,
+             s_str_descriptor[index].c_str());
 }
 
 // =============================================================================
@@ -430,7 +438,6 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
     }
     else
     {
-        // TODO: evaluate if std::copy can be used here instead.
         // copy the string into the temporary array starting at offset 1
         size_t idx = 1;
         for (char ch : s_str_descriptor[index])
