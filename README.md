@@ -5,7 +5,10 @@ This code uses https://github.com/hathach/tinyusb rather than https://github.com
 
 esp32usb is primarily tested with the ESP32-S2 but should work with the ESP32-S3 once generally available.
 
-NOTE: esp32usb requires ESP-IDF v4.3 or later to work correctly.
+NOTE: esp32usb requires ESP-IDF v4.3 to work correctly, later versions of ESP-IDF have not been fully tested and there are likely a few compatibility issues.
+
+***NOTE***
+It is highly recommended to use the ESP-IDF tinyusb component instead of this component.
 
 # How to use
 In your project, add this as a submodule to your `components/` directory.
