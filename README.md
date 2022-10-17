@@ -3,9 +3,9 @@
 esp32usb is an ESP-IDF component that provides an alternative for the ESP-IDF TinyUSB component.
 This code uses https://github.com/hathach/tinyusb rather than https://github.com/espressif/tinyusb.
 
-esp32usb is primarily tested with the ESP32-S2 but should work with the ESP32-S3 once generally available.
-
-NOTE: esp32usb requires ESP-IDF v4.3 to work correctly, later versions of ESP-IDF have not been fully tested and there are likely a few compatibility issues.
+This component depends on ESP-IDF v4.4 and should work for both ESP32-S2 and
+ESP32-S3 but does not have exhaustive testing of all functionality. Testing is
+generally limited to CDC and MSC.
 
 ***NOTE***
 It is highly recommended to use the ESP-IDF tinyusb component instead of this component.
